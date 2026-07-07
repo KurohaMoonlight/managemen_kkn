@@ -32,47 +32,6 @@ const iuranTarget = ref('');
 const isSettingTarget = ref(false);
 const pengajuanList = ref([]);
 const iuranInterval = ref('sekali');
-const toastList = ref([]);
-const showToast = (message, type = 'info') => {
-  const id = Date.now();
-  toastList.value.push({ id, message, type });
-  setTimeout(() => {
-    toastList.value = toastList.value.filter(t => t.id !== id);
-  }, 3500);
-};
-
-const confirmDialog = ref({ show: false, message: '', onConfirm: null, onCancel: null });
-const showConfirm = (message) => {
-  return new Promise((resolve) => {
-    confirmDialog.value = {
-      show: true, message,
-      onConfirm: () => { confirmDialog.value.show = false; resolve(true); },
-      onCancel: () => { confirmDialog.value.show = false; resolve(false); }
-    };
-  });
-};
-
-const promptDialog = ref({ show: false, message: '', value: '', type: 'text', onConfirm: null, onCancel: null });
-const showPrompt = (message, defaultValue = '', type = 'text') => {
-  return new Promise((resolve) => {
-    promptDialog.value = {
-      show: true, message, value: defaultValue, type,
-      onConfirm: () => { promptDialog.value.show = false; resolve(promptDialog.value.value); },
-      onCancel: () => { promptDialog.value.show = false; resolve(null); }
-    };
-  });
-};
-
-const formatCurrencyInput = (val) => {
-  if (!val) return '';
-  return Number(val).toLocaleString('id-ID');
-};
-const parseCurrencyInput = (val) => {
-  if (!val) return '';
-  return val.toString().replace(/\D/g, '');
-};
-
-const iuranInterval = ref('sekali');
 
 const iuranIntervalLabels = {
   sekali: 'Sekali (Sekali Bayar)',
