@@ -1,6 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useToast } from '../../composables/useNotification.js';
+import CurrencyInput from '../CurrencyInput.vue';
+import { formatRupiah } from '../../composables/useCurrencyInput.js';
 
 const { success: toastSuccess, error: toastError, warning: toastWarning } = useToast();
 
@@ -20,20 +22,6 @@ const form = ref({
 });
 const fileNota = ref(null);
 const fileInputRef = ref(null);
-
-const formatRupiah = (angka) => {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
-};
-
-const formatCurrencyInput = (val) => {
-  if (!val) return '';
-  return Number(val).toLocaleString('id-ID');
-};
-
-const parseCurrencyInput = (val) => {
-  if (!val) return '';
-  return val.replace(/\D/g, '');
-};
 
 const fetchData = async () => {
   try {
@@ -64,7 +52,7 @@ const submitPengajuan = async () => {
   
   const formData = new FormData();
   formData.append('kategori_id', form.value.kategori_id);
-  formData.append('nominal', form.value.nominal);
+  formData.append('nominal', Number(form.value.nominal) || 0);
   formData.append('keterangan', form.value.keterangan);
   if (fileNota.value) {
     formData.append('nota', fileNota.value);
@@ -127,7 +115,7 @@ onMounted(() => {
         </div>
         <div>
           <label class="form-label">Nominal (Rp)</label>
-          <input type="text" :value="formatCurrencyInput(form.nominal)" @input="form.nominal = parseCurrencyInput($event.target.value)" class="form-input" placeholder="Contoh: 150.000" />
+          <CurrencyInput v-model="form.nominal" placeholder="Contoh: Rp 150.000" input-class="form-input" />
         </div>
       </div>
       <div style="margin-bottom: 1rem;">

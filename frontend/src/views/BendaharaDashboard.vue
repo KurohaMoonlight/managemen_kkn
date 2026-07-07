@@ -6,7 +6,9 @@ import { Pie } from 'vue-chartjs';
 import ExcelJS from 'exceljs';
 import html2pdf from 'html2pdf.js';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import CurrencyInput from '../components/CurrencyInput.vue';
 import { useToast, useConfirm, usePrompt } from '../composables/useNotification.js';
+import { formatRupiah } from '../composables/useCurrencyInput.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
@@ -38,16 +40,6 @@ const iuranIntervalLabels = {
   bulanan: 'Bulanan',
 };
 
-const formatCurrencyInput = (val) => {
-  if (!val) return '';
-  return Number(val).toLocaleString('id-ID');
-};
-const parseCurrencyInput = (val) => {
-  if (!val) return '';
-  return val.toString().replace(/\D/g, '');
-};
-
-
 // Modals & Forms
 const showModalKategori = ref(false);
 const formKategori = ref({ id: null, nama_kategori: '', plafon_dana: 0 });
@@ -76,11 +68,6 @@ onMounted(() => {
     router.push('/login');
   }
 });
-
-// Format Rupiah
-const formatRupiah = (angka) => {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka || 0);
-};
 
 // --- DATA FETCHING ---
 const fetchSummary = async () => {
@@ -151,7 +138,10 @@ const submitKategori = async () => {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
-      body: JSON.stringify(formKategori.value)
+      body: JSON.stringify({
+        ...formKategori.value,
+        plafon_dana: Number(formKategori.value.plafon_dana) || 0,
+      })
     });
     if (res.ok) {
       toastSuccess(formKategori.value.id ? 'Kategori diperbarui.' : 'Kategori ditambahkan.');
@@ -201,13 +191,17 @@ const resetFormTransaksi = () => {
 };
 const submitTransaksi = async () => {
   const hasKategori = formTransaksi.value.kategori_id || formTransaksi.value.input_kategori?.trim();
+  const nominalInput = Number(formTransaksi.value.nominal);
   if (!hasKategori) {
     toastWarning('Pilih kategori RAB yang sudah ada atau ketik nama kategori baru.');
     return;
   }
+  if (!nominalInput || nominalInput <= 0) {
+    toastWarning('Nominal transaksi harus diisi dan lebih dari 0.');
+    return;
+  }
 
   if (formTransaksi.value.jenis === 'pengeluaran') {
-    const nominalInput = Number(formTransaksi.value.nominal);
     let catData = null;
 
     if (formTransaksi.value.kategori_id) {
@@ -240,7 +234,7 @@ const submitTransaksi = async () => {
   } else if (formTransaksi.value.input_kategori?.trim()) {
     formData.append('nama_kategori_manual', formTransaksi.value.input_kategori.trim());
   }
-  formData.append('nominal', formTransaksi.value.nominal);
+  formData.append('nominal', nominalInput);
   formData.append('tanggal', formTransaksi.value.tanggal);
   formData.append('keterangan', formTransaksi.value.keterangan);
   if (formTransaksi.value.file) {
@@ -392,7 +386,7 @@ const saveIuranTarget = async () => {
     const res = await fetch('/api/bendahara/iuran/target', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
-      body: JSON.stringify({ nominal_target: iuranTarget.value, iuran_interval: iuranInterval.value })
+      body: JSON.stringify({ nominal_target: Number(iuranTarget.value) || 0, iuran_interval: iuranInterval.value })
     });
     if (res.ok) {
       toastSuccess('Target iuran berhasil diperbarui!');
@@ -407,8 +401,8 @@ const promptBayarIuran = async (userObj) => {
   const amountStr = await prompt({
     title: 'Catat Pembayaran Iuran',
     message: `Anggota: ${userObj.nama_lengkap}\nTarget iuran: ${formatRupiah(userObj.nominal_target)}\nSudah terbayar: ${formatRupiah(userObj.nominal_terbayar)}\nSisa tagihan: ${formatRupiah(sisa)}`,
-    placeholder: 'Masukkan nominal pembayaran',
-    inputType: 'number',
+    placeholder: 'Rp 0',
+    inputType: 'currency',
     confirmText: 'Catat Bayar',
   });
   if (!amountStr) return;
@@ -998,7 +992,11 @@ window.addEventListener('click', closeContextMenu);
               <div>
                 <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Target Iuran per Orang (Rp):</label>
                 <div style="display: flex; gap: 0.5rem;">
-                  <input type="number" v-model="iuranTarget" class="form-control" style="width: 150px; padding: 0.5rem;" />
+                  <CurrencyInput
+                    v-model="iuranTarget"
+                    placeholder="Rp 0"
+                    input-style="width: 150px; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.95rem;"
+                  />
                   <button class="btn-primary" @click="saveIuranTarget" :disabled="isSettingTarget" style="padding: 0.5rem 1rem;">{{ isSettingTarget ? 'Menyimpan...' : 'Set Target' }}</button>
                 </div>
               </div>
@@ -1191,7 +1189,11 @@ window.addEventListener('click', closeContextMenu);
           </div>
           <div class="form-group">
             <label>Plafon Anggaran (RAB)</label>
-            <input type="text" :value="formatCurrencyInput(formKategori.plafon_dana)" @input="formKategori.plafon_dana = parseCurrencyInput($event.target.value)" placeholder="Rp 0" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.95rem;" />
+            <CurrencyInput
+              v-model="formKategori.plafon_dana"
+              placeholder="Rp 0"
+              input-style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.95rem;"
+            />
             <small class="text-muted">Total anggaran maksimal yang direncanakan untuk pos ini.</small>
           </div>
           <div class="modal-actions">
@@ -1235,7 +1237,12 @@ window.addEventListener('click', closeContextMenu);
           
           <div class="form-group">
             <label>Nominal (Rp)</label>
-            <input type="number" v-model="formTransaksi.nominal" required min="1" placeholder="Misal: 50000" />
+            <CurrencyInput
+              v-model="formTransaksi.nominal"
+              placeholder="Misal: Rp 50.000"
+              required
+              input-style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.95rem;"
+            />
           </div>
           
           <div class="form-group">

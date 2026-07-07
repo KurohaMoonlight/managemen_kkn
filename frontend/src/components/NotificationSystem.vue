@@ -78,8 +78,22 @@
           <h3 class="confirm-title">{{ promptState.title }}</h3>
           <p v-if="promptState.message" class="confirm-message prompt-message">{{ promptState.message }}</p>
           <input
+            v-if="promptState.inputType === 'currency'"
+            type="text"
+            inputmode="numeric"
+            :value="formatCurrencyInput(promptState.value)"
+            class="prompt-input"
+            :placeholder="promptState.placeholder"
+            autofocus
+            @input="promptState.value = parseCurrencyInput($event.target.value)"
+            @keydown.enter="handlePromptConfirm"
+            @keydown.escape="handlePromptCancel"
+          />
+          <input
+            v-else
             v-model="promptState.value"
-            :type="promptState.inputType"
+            :type="promptState.inputType === 'number' ? 'text' : promptState.inputType"
+            :inputmode="promptState.inputType === 'number' ? 'numeric' : undefined"
             class="prompt-input"
             :placeholder="promptState.placeholder"
             autofocus
@@ -102,6 +116,7 @@
 
 <script setup>
 import { useToast, useConfirm, usePrompt } from '../composables/useNotification.js';
+import { formatCurrencyInput, parseCurrencyInput } from '../composables/useCurrencyInput.js';
 
 const { toasts } = useToast();
 const { confirmState, handleConfirm, handleCancel } = useConfirm();
