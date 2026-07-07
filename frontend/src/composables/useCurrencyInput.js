@@ -4,6 +4,29 @@ export const parseCurrencyInput = (val) => {
   return String(val).replace(/\D/g, '');
 };
 
+/** Hitung jumlah digit sebelum posisi kursor */
+export const countDigitsBefore = (str, cursorPos) => {
+  return parseCurrencyInput(String(str).slice(0, cursorPos)).length;
+};
+
+/** Posisi kursor setelah digit ke-n pada string terformat */
+export const cursorPosFromDigitIndex = (formatted, digitIndex) => {
+  if (digitIndex <= 0) return 0;
+  let count = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (formatted[i] !== '.') count++;
+    if (count >= digitIndex) return i + 1;
+  }
+  return formatted.length;
+};
+
+/** Normalisasi digit: buang leading zero, batasi panjang */
+export const normalizeCurrencyDigits = (val, maxDigits = 12) => {
+  const digits = parseCurrencyInput(val);
+  if (!digits) return '';
+  return digits.replace(/^0+/, '').slice(0, maxDigits);
+};
+
 /** Format angka untuk tampilan di input form (contoh: 120.000) — tanpa prefix Rp agar tidak membingungkan */
 export const formatCurrencyInput = (val) => {
   const digits = parseCurrencyInput(val);
@@ -40,4 +63,7 @@ export const useCurrencyInput = () => ({
   parseCurrencyInput,
   formatRupiah,
   toCurrencyNumber,
+  countDigitsBefore,
+  cursorPosFromDigitIndex,
+  normalizeCurrencyDigits,
 });

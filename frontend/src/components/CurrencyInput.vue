@@ -1,6 +1,11 @@
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue';
-import { formatCurrencyInput, parseCurrencyInput } from '../composables/useCurrencyInput.js';
+import {
+  formatCurrencyInput,
+  countDigitsBefore,
+  cursorPosFromDigitIndex,
+  normalizeCurrencyDigits,
+} from '../composables/useCurrencyInput.js';
 
 const props = defineProps({
   modelValue: { type: [String, Number], default: '' },
@@ -18,34 +23,41 @@ const inputRef = ref(null);
 const isFocused = ref(false);
 const displayValue = ref('');
 
-const normalizeDigits = (val) => {
-  const digits = parseCurrencyInput(val);
-  if (!digits) return '';
-  const trimmed = digits.replace(/^0+/, '');
-  return trimmed.slice(0, props.maxDigits);
+const toFormatted = (val) => formatCurrencyInput(normalizeCurrencyDigits(val, props.maxDigits));
+
+const syncFromModel = () => {
+  if (isFocused.value) return;
+  displayValue.value = toFormatted(props.modelValue);
 };
 
-const syncDisplay = () => {
-  const digits = normalizeDigits(props.modelValue);
-  displayValue.value = isFocused.value ? digits : formatCurrencyInput(digits);
-};
-
-watch(() => props.modelValue, syncDisplay, { immediate: true });
+watch(() => props.modelValue, syncFromModel, { immediate: true });
 
 const onFocus = () => {
   isFocused.value = true;
-  displayValue.value = normalizeDigits(props.modelValue);
+  displayValue.value = toFormatted(props.modelValue);
 };
 
 const onInput = (e) => {
-  const digits = normalizeDigits(e.target.value);
-  displayValue.value = digits;
+  const el = e.target;
+  const cursorPos = el.selectionStart ?? 0;
+  const digitsBeforeCursor = countDigitsBefore(el.value, cursorPos);
+
+  const digits = normalizeCurrencyDigits(el.value, props.maxDigits);
+  const formatted = formatCurrencyInput(digits);
+
+  displayValue.value = formatted;
   emit('update:modelValue', digits);
+
+  nextTick(() => {
+    if (!inputRef.value) return;
+    const newPos = cursorPosFromDigitIndex(formatted, Math.min(digitsBeforeCursor, digits.length));
+    inputRef.value.setSelectionRange(newPos, newPos);
+  });
 };
 
 const onBlur = () => {
   isFocused.value = false;
-  const digits = normalizeDigits(displayValue.value);
+  const digits = normalizeCurrencyDigits(displayValue.value, props.maxDigits);
   displayValue.value = formatCurrencyInput(digits);
   emit('update:modelValue', digits);
 };
