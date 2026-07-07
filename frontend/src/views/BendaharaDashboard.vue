@@ -8,7 +8,7 @@ import html2pdf from 'html2pdf.js';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import CurrencyInput from '../components/CurrencyInput.vue';
 import { useToast, useConfirm, usePrompt } from '../composables/useNotification.js';
-import { formatRupiah } from '../composables/useCurrencyInput.js';
+import { formatRupiah, toCurrencyNumber } from '../composables/useCurrencyInput.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
@@ -21,14 +21,14 @@ const user = ref(null);
 const activeTab = ref('dashboard');
 
 // State
-const summary = ref({ saldo: 0, totalPemasukan: 0, totalPengeluaran: 0, kategori: [] });
+const summary = ref({ saldo: 0, totalPemasukan: 0, totalPengeluaran: 0, totalIuranTarget: 0, kategori: [] });
 const kategoriList = ref([]);
 const transaksiList = ref([]);
 const token = ref('');
 
 // --- IURAN & PENGAJUAN STATES ---
 const iuranList = ref([]);
-const iuranTarget = ref(0);
+const iuranTarget = ref('');
 const isSettingTarget = ref(false);
 const pengajuanList = ref([]);
 const iuranInterval = ref('sekali');
@@ -40,12 +40,27 @@ const iuranIntervalLabels = {
   bulanan: 'Bulanan',
 };
 
+const isIuranKategori = (nama) => (nama || '').toLowerCase() === 'iuran anggota';
+
+const getKategoriProgress = (kat) => {
+  const isIuran = isIuranKategori(kat.nama_kategori);
+  const used = isIuran
+    ? Number(kat.total_pemasukan || 0)
+    : Number(kat.total_pengeluaran || 0);
+  const plafon = isIuran
+    ? (Number(kat.plafon_dana) > 0 ? Number(kat.plafon_dana) : Number(summary.value.totalIuranTarget || 0))
+    : Number(kat.plafon_dana || 0);
+  const percent = plafon > 0 ? Math.min(100, (used / plafon) * 100) : (used > 0 ? 100 : 0);
+  const over = plafon > 0 && used > plafon;
+  return { isIuran, used, plafon, percent, over };
+};
+
 // Modals & Forms
 const showModalKategori = ref(false);
-const formKategori = ref({ id: null, nama_kategori: '', plafon_dana: 0 });
+const formKategori = ref({ id: null, nama_kategori: '', plafon_dana: '' });
 
 const showModalTransaksi = ref(false);
-const formTransaksi = ref({ jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: 0, tanggal: '', keterangan: '', file: null });
+const formTransaksi = ref({ jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: '', tanggal: '', keterangan: '', file: null });
 const fileNotaPreview = ref(null);
 const fileNotaRef = ref(null);
 
@@ -128,7 +143,7 @@ const editKategori = (k) => {
   showModalKategori.value = true;
 };
 const resetFormKategori = () => {
-  formKategori.value = { id: null, nama_kategori: '', plafon_dana: 0 };
+  formKategori.value = { id: null, nama_kategori: '', plafon_dana: '' };
   showModalKategori.value = false;
 };
 const submitKategori = async () => {
@@ -140,7 +155,7 @@ const submitKategori = async () => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
       body: JSON.stringify({
         ...formKategori.value,
-        plafon_dana: Number(formKategori.value.plafon_dana) || 0,
+        plafon_dana: toCurrencyNumber(formKategori.value.plafon_dana),
       })
     });
     if (res.ok) {
@@ -184,14 +199,14 @@ const onFileChange = (e) => {
   }
 };
 const resetFormTransaksi = () => {
-  formTransaksi.value = { jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: 0, tanggal: '', keterangan: '', file: null };
+  formTransaksi.value = { jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: '', tanggal: '', keterangan: '', file: null };
   fileNotaPreview.value = null;
   if (fileNotaRef.value) fileNotaRef.value.value = null;
   showModalTransaksi.value = false;
 };
 const submitTransaksi = async () => {
   const hasKategori = formTransaksi.value.kategori_id || formTransaksi.value.input_kategori?.trim();
-  const nominalInput = Number(formTransaksi.value.nominal);
+  const nominalInput = toCurrencyNumber(formTransaksi.value.nominal);
   if (!hasKategori) {
     toastWarning('Pilih kategori RAB yang sudah ada atau ketik nama kategori baru.');
     return;
@@ -386,11 +401,12 @@ const saveIuranTarget = async () => {
     const res = await fetch('/api/bendahara/iuran/target', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
-      body: JSON.stringify({ nominal_target: Number(iuranTarget.value) || 0, iuran_interval: iuranInterval.value })
+      body: JSON.stringify({ nominal_target: toCurrencyNumber(iuranTarget.value), iuran_interval: iuranInterval.value })
     });
     if (res.ok) {
       toastSuccess('Target iuran berhasil diperbarui!');
       fetchIuran();
+      fetchSummary();
     } else toastError('Gagal memperbarui target.');
   } catch(e) { console.error(e) }
   isSettingTarget.value = false;
@@ -406,7 +422,7 @@ const promptBayarIuran = async (userObj) => {
     confirmText: 'Catat Bayar',
   });
   if (!amountStr) return;
-  const nominal = Number(amountStr);
+  const nominal = toCurrencyNumber(amountStr);
   if (isNaN(nominal) || nominal <= 0) {
     toastError('Nominal tidak valid!');
     return;
@@ -806,17 +822,20 @@ window.addEventListener('click', closeContextMenu);
             <h3 style="margin-bottom: 1rem; color: var(--text-main); font-weight: 600;">Progress Sisa Anggaran (RAB)</h3>
             <div v-for="kat in summary.kategori" :key="kat.id" style="margin-bottom: 1.5rem;">
               <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                <span style="font-weight: 500; font-size: 0.95rem;">{{ kat.nama_kategori }}</span>
+                <span style="font-weight: 500; font-size: 0.95rem;">
+                  {{ kat.nama_kategori }}
+                  <span v-if="getKategoriProgress(kat).isIuran" style="font-size:0.75rem;color:#0369a1;margin-left:4px;">(Pemasukan)</span>
+                </span>
                 <span style="font-size: 0.85rem; color: var(--text-muted);">
-                  {{ formatRupiah(kat.total_pengeluaran) }} / {{ formatRupiah(kat.plafon_dana) }}
+                  {{ formatRupiah(getKategoriProgress(kat).used) }} / {{ formatRupiah(getKategoriProgress(kat).plafon) }}
                 </span>
               </div>
               <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
                 <div 
                   :style="{
-                    width: `${Math.min(100, (Number(kat.total_pengeluaran || 0) / Number(kat.plafon_dana || 1)) * 100)}%`, 
+                    width: `${getKategoriProgress(kat).percent}%`, 
                     height: '100%', 
-                    background: (Number(kat.total_pengeluaran || 0) > Number(kat.plafon_dana || 0)) ? '#ef4444' : '#10b981',
+                    background: getKategoriProgress(kat).over ? '#ef4444' : (getKategoriProgress(kat).isIuran ? '#3b82f6' : '#10b981'),
                     transition: 'width 0.5s ease'
                   }">
                 </div>
@@ -994,8 +1013,8 @@ window.addEventListener('click', closeContextMenu);
                 <div style="display: flex; gap: 0.5rem;">
                   <CurrencyInput
                     v-model="iuranTarget"
-                    placeholder="Rp 0"
-                    input-style="width: 150px; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.95rem;"
+                    placeholder="0"
+                    input-style="border:none;padding:0.5rem 0;box-shadow:none;"
                   />
                   <button class="btn-primary" @click="saveIuranTarget" :disabled="isSettingTarget" style="padding: 0.5rem 1rem;">{{ isSettingTarget ? 'Menyimpan...' : 'Set Target' }}</button>
                 </div>
@@ -1191,8 +1210,7 @@ window.addEventListener('click', closeContextMenu);
             <label>Plafon Anggaran (RAB)</label>
             <CurrencyInput
               v-model="formKategori.plafon_dana"
-              placeholder="Rp 0"
-              input-style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.95rem;"
+              placeholder="0"
             />
             <small class="text-muted">Total anggaran maksimal yang direncanakan untuk pos ini.</small>
           </div>
@@ -1239,9 +1257,8 @@ window.addEventListener('click', closeContextMenu);
             <label>Nominal (Rp)</label>
             <CurrencyInput
               v-model="formTransaksi.nominal"
-              placeholder="Misal: Rp 50.000"
+              placeholder="0"
               required
-              input-style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.95rem;"
             />
           </div>
           
@@ -1290,6 +1307,12 @@ window.addEventListener('click', closeContextMenu);
 }
 
 /* Basic styling matching the aesthetics of MahasiswaDashboard */
+.form-group .currency-input-wrap,
+.modal-form .currency-input-wrap {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .dashboard-container {
   min-height: 100vh;
   background-color: var(--bg-main);

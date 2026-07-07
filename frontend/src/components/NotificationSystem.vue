@@ -77,18 +77,20 @@
           </div>
           <h3 class="confirm-title">{{ promptState.title }}</h3>
           <p v-if="promptState.message" class="confirm-message prompt-message">{{ promptState.message }}</p>
-          <input
-            v-if="promptState.inputType === 'currency'"
-            type="text"
-            inputmode="numeric"
-            :value="formatCurrencyInput(promptState.value)"
-            class="prompt-input"
-            :placeholder="promptState.placeholder"
-            autofocus
-            @input="promptState.value = parseCurrencyInput($event.target.value)"
-            @keydown.enter="handlePromptConfirm"
-            @keydown.escape="handlePromptCancel"
-          />
+          <div v-if="promptState.inputType === 'currency'" class="prompt-currency-wrap">
+            <span class="prompt-currency-prefix">Rp</span>
+            <input
+              type="text"
+              inputmode="numeric"
+              :value="formatCurrencyInput(promptState.value)"
+              class="prompt-input prompt-input--currency"
+              :placeholder="promptState.placeholder"
+              autofocus
+              @input="promptState.value = parseCurrencyInput($event.target.value)"
+              @keydown.enter="handlePromptConfirm"
+              @keydown.escape="handlePromptCancel"
+            />
+          </div>
           <input
             v-else
             v-model="promptState.value"
@@ -458,6 +460,30 @@ const dismissToast = (id) => {
   white-space: pre-line;
   text-align: left;
   margin-bottom: 1rem !important;
+}
+
+.prompt-input--currency {
+  margin-bottom: 0;
+  border: none;
+  padding: 0.75rem 0;
+  flex: 1;
+}
+
+.prompt-currency-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 0 1rem;
+  margin-bottom: 1.5rem;
+  background: white;
+}
+
+.prompt-currency-prefix {
+  font-weight: 600;
+  color: #64748b;
+  flex-shrink: 0;
 }
 
 .prompt-input {

@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useToast } from '../../composables/useNotification.js';
 import CurrencyInput from '../CurrencyInput.vue';
-import { formatRupiah } from '../../composables/useCurrencyInput.js';
+import { formatRupiah, toCurrencyNumber } from '../../composables/useCurrencyInput.js';
 
 const { success: toastSuccess, error: toastError, warning: toastWarning } = useToast();
 
@@ -52,7 +52,7 @@ const submitPengajuan = async () => {
   
   const formData = new FormData();
   formData.append('kategori_id', form.value.kategori_id);
-  formData.append('nominal', Number(form.value.nominal) || 0);
+  formData.append('nominal', toCurrencyNumber(form.value.nominal));
   formData.append('keterangan', form.value.keterangan);
   if (fileNota.value) {
     formData.append('nota', fileNota.value);
@@ -115,7 +115,7 @@ onMounted(() => {
         </div>
         <div>
           <label class="form-label">Nominal (Rp)</label>
-          <CurrencyInput v-model="form.nominal" placeholder="Contoh: Rp 150.000" input-class="form-input" />
+          <CurrencyInput v-model="form.nominal" placeholder="0" />
         </div>
       </div>
       <div style="margin-bottom: 1rem;">

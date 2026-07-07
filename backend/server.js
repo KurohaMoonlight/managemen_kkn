@@ -2398,19 +2398,27 @@ app.get('/api/bendahara/summary', authenticateToken, async (req, res) => {
     const totalPengeluaran = keluarRes[0].total || 0;
     const saldo = totalPemasukan - totalPengeluaran;
 
-    // Get per category for pengeluaran
+    // Get per category: pengeluaran & pemasukan
     const [kategoriRes] = await pool.query(`
-      SELECT k.id, k.nama_kategori, k.plafon_dana, SUM(t.nominal) as total_pengeluaran
+      SELECT k.id, k.nama_kategori, k.plafon_dana,
+        COALESCE(SUM(CASE WHEN t.jenis = 'pengeluaran' THEN t.nominal ELSE 0 END), 0) as total_pengeluaran,
+        COALESCE(SUM(CASE WHEN t.jenis = 'pemasukan' THEN t.nominal ELSE 0 END), 0) as total_pemasukan
       FROM keuangan_kategori k
-      LEFT JOIN keuangan_transaksi t ON k.id = t.kategori_id AND t.jenis = 'pengeluaran'
+      LEFT JOIN keuangan_transaksi t ON k.id = t.kategori_id
       WHERE k.posko_id = ?
       GROUP BY k.id
+    `, [req.user.posko_id]);
+
+    const [iuranTargetRes] = await pool.query(`
+      SELECT COALESCE(SUM(nominal_target), 0) as total_target
+      FROM keuangan_iuran WHERE posko_id = ?
     `, [req.user.posko_id]);
 
     res.json({
       saldo,
       totalPemasukan,
       totalPengeluaran,
+      totalIuranTarget: iuranTargetRes[0]?.total_target || 0,
       kategori: kategoriRes
     });
   } catch (error) {
