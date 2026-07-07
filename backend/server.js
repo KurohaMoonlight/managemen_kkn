@@ -2445,7 +2445,12 @@ app.get('/api/bendahara/iuran', authenticateToken, requireBendaharaOrAdmin, asyn
       WHERE u.posko_id = ? AND u.role != 'superadmin'
       ORDER BY u.nama_lengkap ASC
     `, [req.user.posko_id, req.user.posko_id]);
-    res.json({ list: rows, iuran_interval });
+    const list = rows.map((r) => ({
+      ...r,
+      nominal_target: Math.round(Number(r.nominal_target) || 0),
+      nominal_terbayar: Math.round(Number(r.nominal_terbayar) || 0),
+    }));
+    res.json({ list, iuran_interval });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil data iuran.' });
   }
@@ -2454,6 +2459,10 @@ app.get('/api/bendahara/iuran', authenticateToken, requireBendaharaOrAdmin, asyn
 app.post('/api/bendahara/iuran/target', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     const { nominal_target, iuran_interval } = req.body;
+    const targetAmount = Math.round(Number(nominal_target) || 0);
+    if (!targetAmount || targetAmount <= 0) {
+      return res.status(400).json({ message: 'Target iuran harus lebih dari 0.' });
+    }
     
     // Simpan iuran_interval ke tabel posko
     if (iuran_interval) {
@@ -2467,7 +2476,7 @@ app.post('/api/bendahara/iuran/target', authenticateToken, requireBendaharaOrAdm
         INSERT INTO keuangan_iuran (posko_id, user_id, nominal_target)
         VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE nominal_target = ?
-      `, [req.user.posko_id, u.id, nominal_target, nominal_target]);
+      `, [req.user.posko_id, u.id, targetAmount, targetAmount]);
     }
     res.json({ success: true, message: 'Target iuran berhasil diperbarui.' });
   } catch (error) {

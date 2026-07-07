@@ -8,7 +8,7 @@ import html2pdf from 'html2pdf.js';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import CurrencyInput from '../components/CurrencyInput.vue';
 import { useToast, useConfirm, usePrompt } from '../composables/useNotification.js';
-import { formatRupiah, toCurrencyNumber } from '../composables/useCurrencyInput.js';
+import { formatRupiah, toCurrencyNumber, parseCurrencyInput } from '../composables/useCurrencyInput.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
@@ -143,7 +143,7 @@ const fetchIuran = async () => {
       iuranList.value = data.list || [];
       iuranInterval.value = data.iuran_interval || 'sekali';
       if (iuranList.value.length > 0 && iuranList.value[0].nominal_target) {
-        iuranTarget.value = String(iuranList.value[0].nominal_target);
+        iuranTarget.value = parseCurrencyInput(iuranList.value[0].nominal_target);
       }
     }
   } catch(e) { console.error(e) }
@@ -158,7 +158,7 @@ const fetchPengajuan = async () => {
 
 // --- KATEGORI (RAB) ACTIONS ---
 const editKategori = (k) => {
-  formKategori.value = { ...k, plafon_dana: k.plafon_dana ? String(k.plafon_dana) : '' };
+  formKategori.value = { ...k, plafon_dana: k.plafon_dana ? parseCurrencyInput(k.plafon_dana) : '' };
   showModalKategori.value = true;
 };
 const resetFormKategori = () => {

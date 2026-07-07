@@ -1,7 +1,25 @@
 /** Ambil hanya digit mentah dari nilai apa pun */
 export const parseCurrencyInput = (val) => {
   if (val === '' || val === null || val === undefined) return '';
-  return String(val).replace(/\D/g, '');
+
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val) || val < 0) return '';
+    const n = Math.round(val);
+    return n === 0 ? '' : String(n);
+  }
+
+  const str = String(val).trim();
+  if (!str) return '';
+
+  // Nilai desimal dari database/API (contoh: "120000.00") — jangan dianggap pemisah ribuan
+  if (/^\d+\.\d{1,2}$/.test(str)) {
+    const n = Math.round(Number(str));
+    if (!Number.isFinite(n) || n < 0) return '';
+    return n === 0 ? '' : String(n);
+  }
+
+  // Format input Indonesia (120.000) atau digit mentah dari form
+  return str.replace(/\D/g, '');
 };
 
 /** Hitung jumlah digit sebelum posisi kursor */
