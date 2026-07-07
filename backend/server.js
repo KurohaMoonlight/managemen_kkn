@@ -2304,6 +2304,9 @@ app.post('/api/bendahara/transaksi', authenticateToken, upload.single('nota'), c
   if (!jenis || !nominal || !tanggal || !keterangan) {
     return res.status(400).json({ message: 'Mohon lengkapi form transaksi.' });
   }
+  if (!kategori_id && !nama_kategori_manual?.trim()) {
+    return res.status(400).json({ message: 'Kategori RAB harus dipilih atau diisi.' });
+  }
 
   try {
     let fileId = null;
@@ -2337,12 +2340,13 @@ app.post('/api/bendahara/transaksi', authenticateToken, upload.single('nota'), c
     }
 
     let final_kategori_id = kategori_id || null;
-    if (!final_kategori_id && nama_kategori_manual) {
-      const [exist] = await pool.query('SELECT id FROM keuangan_kategori WHERE nama_kategori = ? AND posko_id = ?', [nama_kategori_manual, req.user.posko_id]);
+    if (!final_kategori_id && nama_kategori_manual?.trim()) {
+      const trimmed = nama_kategori_manual.trim();
+      const [exist] = await pool.query('SELECT id FROM keuangan_kategori WHERE LOWER(nama_kategori) = LOWER(?) AND posko_id = ?', [trimmed, req.user.posko_id]);
       if (exist.length > 0) {
         final_kategori_id = exist[0].id;
       } else {
-        const [ins] = await pool.query('INSERT INTO keuangan_kategori (posko_id, nama_kategori, plafon_dana) VALUES (?, ?, 0)', [req.user.posko_id, nama_kategori_manual]);
+        const [ins] = await pool.query('INSERT INTO keuangan_kategori (posko_id, nama_kategori, plafon_dana) VALUES (?, ?, 0)', [req.user.posko_id, trimmed]);
         final_kategori_id = ins.insertId;
       }
     }
@@ -2483,6 +2487,8 @@ app.post('/api/bendahara/iuran/bayar', authenticateToken, async (req, res) => {
     const [uRows] = await pool.query('SELECT nama_lengkap FROM users WHERE id = ?', [user_id]);
     const nama = uRows[0]?.nama_lengkap || 'Anggota';
     
+    const fmtRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
+    
     // Find or create 'Iuran Anggota' category
     let iuranKatId = null;
     const [existKat] = await pool.query('SELECT id FROM keuangan_kategori WHERE nama_kategori = ? AND posko_id = ?', ['Iuran Anggota', req.user.posko_id]);
@@ -2496,7 +2502,7 @@ app.post('/api/bendahara/iuran/bayar', authenticateToken, async (req, res) => {
     await pool.query(`
       INSERT INTO keuangan_transaksi (posko_id, kategori_id, jenis, nominal, tanggal, keterangan, user_id)
       VALUES (?, ?, 'pemasukan', ?, CURDATE(), ?, ?)
-    `, [req.user.posko_id, iuranKatId, nominal_bayar, `${nama} membayar ${nominal_bayar} dari ${target}`, req.user.id]);
+    `, [req.user.posko_id, iuranKatId, nominal_bayar, `${nama} membayar iuran sebesar ${fmtRupiah(nominal_bayar)} dari total tagihan ${fmtRupiah(target)}`, req.user.id]);
     
     res.json({ success: true, message: 'Pembayaran berhasil dicatat.' });
   } catch (error) {
@@ -2508,7 +2514,7 @@ app.post('/api/bendahara/iuran/bayar', authenticateToken, async (req, res) => {
 app.get('/api/bendahara/pengajuan', authenticateToken, async (req, res) => {
   try {
     let query = `
-      SELECT p.*, u.nama_lengkap, u.jabatan AS pengaju_jabatan, k.nama_kategori 
+      SELECT p.*, u.nama_lengkap, u.nim, u.jabatan AS pengaju_jabatan, k.nama_kategori 
       FROM keuangan_pengajuan p
       JOIN users u ON p.user_id = u.id
       JOIN keuangan_kategori k ON p.kategori_id = k.id
@@ -2556,7 +2562,12 @@ app.put('/api/bendahara/pengajuan/:id/status', authenticateToken, async (req, re
     `, [status, catatan_bendahara || null, req.params.id, req.user.posko_id]);
     
     if (status === 'disetujui') {
-      const [rows] = await pool.query('SELECT * FROM keuangan_pengajuan WHERE id = ?', [req.params.id]);
+      const [rows] = await pool.query(`
+        SELECT p.*, u.nama_lengkap, u.nim 
+        FROM keuangan_pengajuan p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.id = ?
+      `, [req.params.id]);
       if (rows.length > 0) {
         const p = rows[0];
         let fileNotaId = null;
@@ -2567,10 +2578,11 @@ app.put('/api/bendahara/pengajuan/:id/status', authenticateToken, async (req, re
            `, [`Nota_Reimburse_${p.id}.jpg`, p.file_nota_url, p.posko_id]);
            fileNotaId = fRes.insertId;
         }
+        const pengajuLabel = p.nim ? `${p.nama_lengkap} (${p.nim})` : p.nama_lengkap;
         await pool.query(`
           INSERT INTO keuangan_transaksi (posko_id, kategori_id, jenis, nominal, tanggal, keterangan, file_nota_id, user_id)
           VALUES (?, ?, 'pengeluaran', ?, CURDATE(), ?, ?, ?)
-        `, [p.posko_id, p.kategori_id, p.nominal, `Reimbursement: ${p.keterangan}`, fileNotaId, req.user.id]);
+        `, [p.posko_id, p.kategori_id, p.nominal, `Reimbursement - ${pengajuLabel}: ${p.keterangan}`, fileNotaId, req.user.id]);
       }
     }
     res.json({ success: true, message: 'Status pengajuan diperbarui.' });

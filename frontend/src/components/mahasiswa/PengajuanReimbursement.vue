@@ -174,7 +174,10 @@ onMounted(() => {
             <td style="padding: 1rem;">{{ new Date(p.created_at).toLocaleDateString('id-ID') }}</td>
             <td style="padding: 1rem;">
               <div style="font-weight: 600; color: #1e293b;">{{ p.nama_lengkap }}</div>
-              <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">{{ p.pengaju_jabatan || 'Anggota' }}</div>
+              <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px; display: flex; flex-direction: column; gap: 2px;">
+                <span v-if="p.nim">🎓 NIM: {{ p.nim }}</span>
+                <span>{{ p.pengaju_jabatan || 'Anggota Posko' }}</span>
+              </div>
             </td>
             <td style="padding: 1rem; font-weight: 500;">{{ p.nama_kategori }}</td>
             <td style="padding: 1rem; font-size: 0.9rem;">{{ p.keterangan }}</td>

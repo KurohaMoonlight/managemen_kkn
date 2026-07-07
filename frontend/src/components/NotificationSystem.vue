@@ -67,14 +67,45 @@
         </div>
       </div>
     </Transition>
+
+    <!-- ─── PROMPT MODAL ──────────────────────────────────────────────────── -->
+    <Transition name="modal-fade">
+      <div v-if="promptState.visible" class="modal-backdrop" @click.self="handlePromptCancel">
+        <div class="prompt-modal">
+          <div class="prompt-icon-wrap">
+            <div class="prompt-icon">✏️</div>
+          </div>
+          <h3 class="confirm-title">{{ promptState.title }}</h3>
+          <p v-if="promptState.message" class="confirm-message prompt-message">{{ promptState.message }}</p>
+          <input
+            v-model="promptState.value"
+            :type="promptState.inputType"
+            class="prompt-input"
+            :placeholder="promptState.placeholder"
+            autofocus
+            @keydown.enter="handlePromptConfirm"
+            @keydown.escape="handlePromptCancel"
+          />
+          <div class="confirm-actions">
+            <button class="confirm-btn confirm-btn--cancel" @click="handlePromptCancel">
+              {{ promptState.cancelText }}
+            </button>
+            <button class="confirm-btn confirm-btn--info" @click="handlePromptConfirm">
+              {{ promptState.confirmText }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
 <script setup>
-import { useToast, useConfirm } from '../composables/useNotification.js';
+import { useToast, useConfirm, usePrompt } from '../composables/useNotification.js';
 
 const { toasts } = useToast();
 const { confirmState, handleConfirm, handleCancel } = useConfirm();
+const { promptState, handlePromptConfirm, handlePromptCancel } = usePrompt();
 
 const icons = {
   success: '✅',
@@ -378,6 +409,58 @@ const dismissToast = (id) => {
 .modal-fade-enter-from .confirm-modal { transform: scale(0.9) translateY(20px); }
 .modal-fade-leave-to { opacity: 0; }
 .modal-fade-leave-to .confirm-modal { transform: scale(0.95); }
+
+/* ─── PROMPT MODAL ─────────────────────────────────────────────────────────── */
+.prompt-modal {
+  background: white;
+  border-radius: 20px;
+  padding: 2rem;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
+  border-top: 4px solid var(--color-primary, #6b8078);
+}
+
+.prompt-icon-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.prompt-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #ede9fe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.prompt-message {
+  white-space: pre-line;
+  text-align: left;
+  margin-bottom: 1rem !important;
+}
+
+.prompt-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.prompt-input:focus {
+  border-color: var(--color-primary, #6b8078);
+  box-shadow: 0 0 0 3px rgba(107, 128, 120, 0.15);
+}
 
 @media (max-width: 480px) {
   .toast-container {

@@ -5,10 +5,16 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
 import { Pie } from 'vue-chartjs';
 import ExcelJS from 'exceljs';
 import html2pdf from 'html2pdf.js';
+import SearchableSelect from '../components/SearchableSelect.vue';
+import { useToast, useConfirm, usePrompt } from '../composables/useNotification.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
 const router = useRouter();
+const { success: toastSuccess, error: toastError, info: toastInfo, warning: toastWarning } = useToast();
+const { confirm } = useConfirm();
+const { prompt } = usePrompt();
+
 const user = ref(null);
 const activeTab = ref('dashboard');
 
@@ -24,35 +30,12 @@ const iuranTarget = ref(0);
 const isSettingTarget = ref(false);
 const pengajuanList = ref([]);
 const iuranInterval = ref('sekali');
-const toastList = ref([]);
-const showToast = (message, type = 'info') => {
-  const id = Date.now();
-  toastList.value.push({ id, message, type });
-  setTimeout(() => {
-    toastList.value = toastList.value.filter(t => t.id !== id);
-  }, 3500);
-};
 
-const confirmDialog = ref({ show: false, message: '', onConfirm: null, onCancel: null });
-const showConfirm = (message) => {
-  return new Promise((resolve) => {
-    confirmDialog.value = {
-      show: true, message,
-      onConfirm: () => { confirmDialog.value.show = false; resolve(true); },
-      onCancel: () => { confirmDialog.value.show = false; resolve(false); }
-    };
-  });
-};
-
-const promptDialog = ref({ show: false, message: '', value: '', type: 'text', onConfirm: null, onCancel: null });
-const showPrompt = (message, defaultValue = '', type = 'text') => {
-  return new Promise((resolve) => {
-    promptDialog.value = {
-      show: true, message, value: defaultValue, type,
-      onConfirm: () => { promptDialog.value.show = false; resolve(promptDialog.value.value); },
-      onCancel: () => { promptDialog.value.show = false; resolve(null); }
-    };
-  });
+const iuranIntervalLabels = {
+  sekali: 'Sekali (Sekali Bayar)',
+  harian: 'Harian',
+  mingguan: 'Mingguan',
+  bulanan: 'Bulanan',
 };
 
 const formatCurrencyInput = (val) => {
@@ -137,7 +120,9 @@ const fetchIuran = async () => {
   try {
     const res = await fetch('/api/bendahara/iuran', { headers: { 'Authorization': `Bearer ${token.value}` } });
     if (res.ok) {
-      iuranList.value = await res.json();
+      const data = await res.json();
+      iuranList.value = data.list || [];
+      iuranInterval.value = data.iuran_interval || 'sekali';
       if (iuranList.value.length > 0) iuranTarget.value = iuranList.value[0].nominal_target;
     }
   } catch(e) { console.error(e) }
@@ -169,7 +154,7 @@ const submitKategori = async () => {
       body: JSON.stringify(formKategori.value)
     });
     if (res.ok) {
-      showToast(formKategori.value.id ? 'Kategori diperbarui.' : 'Kategori ditambahkan.', 'success');
+      toastSuccess(formKategori.value.id ? 'Kategori diperbarui.' : 'Kategori ditambahkan.');
       resetFormKategori();
       fetchKategori();
       fetchSummary();
@@ -179,14 +164,19 @@ const submitKategori = async () => {
   }
 };
 const hapusKategori = async (id) => {
-  if (!(await showConfirm('Yakin ingin menghapus kategori/pos ini? Transaksi yang terkait akan kehilangan kategorinya.'))) return;
+  if (!(await confirm({
+    title: 'Hapus Kategori RAB?',
+    message: 'Yakin ingin menghapus kategori/pos ini? Transaksi yang terkait akan kehilangan kategorinya.',
+    type: 'danger',
+    confirmText: 'Ya, Hapus',
+  }))) return;
   try {
     const res = await fetch(`/api/bendahara/kategori/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token.value}` }
     });
     if (res.ok) {
-      showToast('Kategori dihapus.', 'success');
+      toastSuccess('Kategori dihapus.');
       fetchKategori();
       fetchSummary();
     }
@@ -210,14 +200,33 @@ const resetFormTransaksi = () => {
   showModalTransaksi.value = false;
 };
 const submitTransaksi = async () => {
-  if (formTransaksi.value.jenis === 'pengeluaran' && formTransaksi.value.kategori_id) {
-    const katId = formTransaksi.value.kategori_id;
+  const hasKategori = formTransaksi.value.kategori_id || formTransaksi.value.input_kategori?.trim();
+  if (!hasKategori) {
+    toastWarning('Pilih kategori RAB yang sudah ada atau ketik nama kategori baru.');
+    return;
+  }
+
+  if (formTransaksi.value.jenis === 'pengeluaran') {
     const nominalInput = Number(formTransaksi.value.nominal);
-    const catData = summary.value.kategori.find(k => k.id == katId);
+    let catData = null;
+
+    if (formTransaksi.value.kategori_id) {
+      catData = summary.value.kategori.find(k => k.id == formTransaksi.value.kategori_id);
+    } else if (formTransaksi.value.input_kategori) {
+      catData = summary.value.kategori.find(
+        k => k.nama_kategori.toLowerCase() === formTransaksi.value.input_kategori.trim().toLowerCase()
+      );
+    }
+
     if (catData) {
       const sisa = Number(catData.plafon_dana) - Number(catData.total_pengeluaran);
       if (nominalInput > sisa) {
-        if (!(await showConfirm(`Peringatan: Nominal ini melebihi sisa anggaran RAB!\nSisa anggaran untuk ${catData.nama_kategori} hanya ${formatRupiah(sisa)}.\nTetap lanjutkan menyimpan transaksi ini?`))) {
+        if (!(await confirm({
+          title: 'Melebihi Anggaran RAB',
+          message: `Nominal ini melebihi sisa anggaran RAB!\n\nSisa anggaran untuk "${catData.nama_kategori}" hanya ${formatRupiah(sisa)}.\n\nTetap lanjutkan menyimpan transaksi ini?`,
+          type: 'warning',
+          confirmText: 'Ya, Tetap Simpan',
+        }))) {
           return;
         }
       }
@@ -226,7 +235,11 @@ const submitTransaksi = async () => {
 
   const formData = new FormData();
   formData.append('jenis', formTransaksi.value.jenis);
-  if (formTransaksi.value.kategori_id) formData.append('kategori_id', formTransaksi.value.kategori_id);
+  if (formTransaksi.value.kategori_id) {
+    formData.append('kategori_id', formTransaksi.value.kategori_id);
+  } else if (formTransaksi.value.input_kategori?.trim()) {
+    formData.append('nama_kategori_manual', formTransaksi.value.input_kategori.trim());
+  }
   formData.append('nominal', formTransaksi.value.nominal);
   formData.append('tanggal', formTransaksi.value.tanggal);
   formData.append('keterangan', formTransaksi.value.keterangan);
@@ -241,31 +254,37 @@ const submitTransaksi = async () => {
       body: formData
     });
     if (res.ok) {
-      showToast('Transaksi berhasil dicatat!', 'success');
+      toastSuccess('Transaksi berhasil dicatat!');
       resetFormTransaksi();
       fetchTransaksi();
       fetchSummary();
+      fetchKategori();
       // Reload explorer if open
       if (activeTab.value === 'explorer') {
         fetchExplorerDirectory(explorerCurrentFolderId.value);
       }
     } else {
       const data = await res.json();
-      showToast(data.message || 'Gagal', 'error');
+      toastError(data.message || 'Gagal mencatat transaksi.');
     }
   } catch (err) {
     console.error(err);
   }
 };
 const hapusTransaksi = async (id) => {
-  if (!(await showConfirm('Yakin ingin menghapus transaksi ini?'))) return;
+  if (!(await confirm({
+    title: 'Hapus Transaksi?',
+    message: 'Yakin ingin menghapus transaksi ini? Tindakan ini tidak dapat dibatalkan.',
+    type: 'danger',
+    confirmText: 'Ya, Hapus',
+  }))) return;
   try {
     const res = await fetch(`/api/bendahara/transaksi/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token.value}` }
     });
     if (res.ok) {
-      showToast('Transaksi dihapus.', 'success');
+      toastSuccess('Transaksi dihapus.');
       fetchTransaksi();
       fetchSummary();
     }
@@ -361,28 +380,41 @@ const exportPDF = () => {
 
 // --- IURAN METHODS ---
 const saveIuranTarget = async () => {
-  if (!(await showConfirm(`Ubah target iuran menjadi ${formatRupiah(iuranTarget.value)} untuk semua anggota?`))) return;
+  const intervalLabel = iuranIntervalLabels[iuranInterval.value] || iuranInterval.value;
+  if (!(await confirm({
+    title: 'Ubah Target Iuran?',
+    message: `Ubah target iuran menjadi ${formatRupiah(iuranTarget.value)} per orang dengan periode ${intervalLabel} untuk semua anggota?`,
+    type: 'warning',
+    confirmText: 'Ya, Simpan',
+  }))) return;
   isSettingTarget.value = true;
   try {
     const res = await fetch('/api/bendahara/iuran/target', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
-      body: JSON.stringify({ nominal_target: iuranTarget.value })
+      body: JSON.stringify({ nominal_target: iuranTarget.value, iuran_interval: iuranInterval.value })
     });
     if (res.ok) {
-      showToast("Target iuran berhasil diperbarui!", 'success');
+      toastSuccess('Target iuran berhasil diperbarui!');
       fetchIuran();
-    } else showToast("Gagal memperbarui target.", 'error');
+    } else toastError('Gagal memperbarui target.');
   } catch(e) { console.error(e) }
   isSettingTarget.value = false;
 };
 
 const promptBayarIuran = async (userObj) => {
-  const amountStr = await showPrompt(`Catat pembayaran iuran untuk ${userObj.nama_lengkap}:\n\nTarget sisa: ${formatRupiah(userObj.nominal_target - userObj.nominal_terbayar)}\nMasukkan nominal bayar (Angka saja):`, '', 'number');
+  const sisa = userObj.nominal_target - userObj.nominal_terbayar;
+  const amountStr = await prompt({
+    title: 'Catat Pembayaran Iuran',
+    message: `Anggota: ${userObj.nama_lengkap}\nTarget iuran: ${formatRupiah(userObj.nominal_target)}\nSudah terbayar: ${formatRupiah(userObj.nominal_terbayar)}\nSisa tagihan: ${formatRupiah(sisa)}`,
+    placeholder: 'Masukkan nominal pembayaran',
+    inputType: 'number',
+    confirmText: 'Catat Bayar',
+  });
   if (!amountStr) return;
   const nominal = Number(amountStr);
   if (isNaN(nominal) || nominal <= 0) {
-    showToast("Nominal tidak valid!", 'error');
+    toastError('Nominal tidak valid!');
     return;
   }
   
@@ -393,13 +425,13 @@ const promptBayarIuran = async (userObj) => {
       body: JSON.stringify({ user_id: userObj.user_id, nominal_bayar: nominal })
     });
     if (res.ok) {
-      showToast("Pembayaran berhasil dicatat, dan uang otomatis masuk ke Kas Pemasukan!", 'success');
+      toastSuccess('Pembayaran berhasil dicatat dan otomatis masuk ke Arus Kas (Kategori: Iuran Anggota).');
       fetchIuran();
       fetchTransaksi();
       fetchSummary();
     } else {
       const data = await res.json();
-      showToast(data.message || "Gagal mencatat pembayaran.", "error");
+      toastError(data.message || 'Gagal mencatat pembayaran.');
     }
   } catch(e) { console.error(e) }
 };
@@ -408,10 +440,20 @@ const promptBayarIuran = async (userObj) => {
 const updatePengajuan = async (p, newStatus) => {
   let catatan = '';
   if (newStatus === 'ditolak') {
-    catatan = await showPrompt('Alasan penolakan:');
+    catatan = await prompt({
+      title: 'Tolak Pengajuan',
+      message: `Pengaju: ${p.nama_lengkap}${p.nim ? ` (${p.nim})` : ''}\nNominal: ${formatRupiah(p.nominal)}`,
+      placeholder: 'Tuliskan alasan penolakan...',
+      confirmText: 'Tolak Pengajuan',
+    });
     if (catatan === null) return;
   } else {
-    if (!(await showConfirm(`Setujui pengajuan sebesar ${formatRupiah(p.nominal)} dari ${p.nama_lengkap}? Saldo Kas akan otomatis terpotong.`))) return;
+    if (!(await confirm({
+      title: 'Setujui Pengajuan?',
+      message: `Setujui pengajuan sebesar ${formatRupiah(p.nominal)} dari ${p.nama_lengkap}${p.nim ? ` (${p.nim})` : ''}?\n\nSaldo Kas akan otomatis terpotong.`,
+      type: 'info',
+      confirmText: 'Ya, Setujui',
+    }))) return;
   }
   
   try {
@@ -421,19 +463,19 @@ const updatePengajuan = async (p, newStatus) => {
       body: JSON.stringify({ status: newStatus, catatan_bendahara: catatan })
     });
     if (res.ok) {
-      showToast(`Pengajuan berhasil ${newStatus}!`, 'success');
+      toastSuccess(`Pengajuan berhasil ${newStatus === 'disetujui' ? 'disetujui' : 'ditolak'}!`);
       fetchPengajuan();
       if (newStatus === 'disetujui') {
         fetchTransaksi();
         fetchSummary();
       }
-    } else showToast("Gagal memperbarui status pengajuan.", 'error');
+    } else toastError('Gagal memperbarui status pengajuan.');
   } catch(e) { console.error(e) }
 };
 
 const exportExcel = async () => {
   if (filteredLpjList.value.length === 0) {
-    showToast("Tidak ada data untuk diekspor.", 'info');
+    toastInfo('Tidak ada data untuk diekspor.');
     return;
   }
   
@@ -614,7 +656,12 @@ const renameExplorerItem = async () => {
   const { item, type } = contextMenu.value;
   if (!item) return;
   const currentName = type === 'folder' ? item.nama_folder : item.nama_file;
-  const newName = await showPrompt(`Ganti nama ${type === 'folder' ? 'folder' : 'file'}:`, currentName);
+  const newName = await prompt({
+    title: `Ganti Nama ${type === 'folder' ? 'Folder' : 'File'}`,
+    defaultValue: currentName,
+    placeholder: 'Masukkan nama baru...',
+    confirmText: 'Simpan',
+  });
   if (!newName || newName.trim() === '' || newName === currentName) {
     closeContextMenu();
     return;
@@ -637,10 +684,10 @@ const renameExplorerItem = async () => {
       fetchExplorerDirectory(explorerCurrentFolderId.value);
     } else {
       const d = await res.json();
-      showToast(d.message || "Gagal mengganti nama.", "error");
+      toastError(d.message || 'Gagal mengganti nama.');
     }
   } catch (e) {
-    showToast("Terjadi kesalahan jaringan.", 'info');
+    toastInfo('Terjadi kesalahan jaringan.');
   }
   closeContextMenu();
 };
@@ -660,14 +707,19 @@ const downloadFile = async (fileObj) => {
     document.body.removeChild(link);
   } catch (error) {
     console.error("Download failed:", error);
-    showToast("Gagal mengunduh file.", 'error');
+    toastError('Gagal mengunduh file.');
   }
 };
 
 const deleteExplorerItem = async () => {
   const { item, type } = contextMenu.value;
   if (!item) return;
-  if (!(await showConfirm(`Yakin ingin menghapus ${type === 'folder' ? 'folder' : 'file'} "${type === 'folder' ? item.nama_folder : item.nama_file}"?`))) {
+  if (!(await confirm({
+    title: 'Hapus Item?',
+    message: `Yakin ingin menghapus ${type === 'folder' ? 'folder' : 'file'} "${type === 'folder' ? item.nama_folder : item.nama_file}"?`,
+    type: 'danger',
+    confirmText: 'Ya, Hapus',
+  }))) {
     closeContextMenu();
     return;
   }
@@ -926,13 +978,29 @@ window.addEventListener('click', closeContextMenu);
           <div class="card-header" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <div>
               <h2>Pemantau Iuran Anggota</h2>
-              <p class="text-muted">Pantau status pembayaran iuran wajib setiap anggota posko.</p>
+              <p class="text-muted">
+                Pantau status pembayaran iuran wajib setiap anggota posko.
+                <span v-if="iuranInterval" style="display:inline-block;margin-top:0.25rem;padding:0.15rem 0.6rem;background:#e0f2fe;color:#0369a1;border-radius:99px;font-size:0.8rem;font-weight:600;">
+                  Periode: {{ iuranIntervalLabels[iuranInterval] || iuranInterval }}
+                </span>
+              </p>
             </div>
-            <div style="background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-              <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Target Iuran per Orang (Rp):</label>
-              <div style="display: flex; gap: 0.5rem;">
-                <input type="number" v-model="iuranTarget" class="form-control" style="width: 150px; padding: 0.5rem;" />
-                <button class="btn-primary" @click="saveIuranTarget" :disabled="isSettingTarget" style="padding: 0.5rem 1rem;">{{ isSettingTarget ? 'Menyimpan...' : 'Set Target' }}</button>
+            <div style="background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+              <div>
+                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Rentang Waktu Pembayaran:</label>
+                <select v-model="iuranInterval" class="form-control" style="padding: 0.5rem; min-width: 160px;">
+                  <option value="sekali">Sekali (Sekali Bayar)</option>
+                  <option value="harian">Harian</option>
+                  <option value="mingguan">Mingguan</option>
+                  <option value="bulanan">Bulanan</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem;">Target Iuran per Orang (Rp):</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <input type="number" v-model="iuranTarget" class="form-control" style="width: 150px; padding: 0.5rem;" />
+                  <button class="btn-primary" @click="saveIuranTarget" :disabled="isSettingTarget" style="padding: 0.5rem 1rem;">{{ isSettingTarget ? 'Menyimpan...' : 'Set Target' }}</button>
+                </div>
               </div>
             </div>
           </div>
@@ -996,9 +1064,10 @@ window.addEventListener('click', closeContextMenu);
                 <tr v-for="p in pengajuanList" :key="p.id">
                   <td>{{ new Date(p.created_at).toLocaleDateString('id-ID') }}</td>
                   <td style="font-weight: 500;">
-                    {{ p.nama_lengkap }}
-                    <div style="font-size:0.8rem;color:#6b7280;margin-top:2px;">
-                      {{ p.divisi_pic ? '🏷️ ' + p.divisi_pic : (p.pengaju_jabatan ? '👤 ' + p.pengaju_jabatan : '') }}
+                    <div>{{ p.nama_lengkap }}</div>
+                    <div style="font-size:0.78rem;color:#64748b;margin-top:3px;display:flex;flex-direction:column;gap:2px;">
+                      <span v-if="p.nim">🎓 NIM: {{ p.nim }}</span>
+                      <span v-if="p.pengaju_jabatan">👤 {{ p.pengaju_jabatan }}</span>
                     </div>
                   </td>
                   <td>{{ p.nama_kategori }}</td>
@@ -1152,12 +1221,16 @@ window.addEventListener('click', closeContextMenu);
             </div>
           </div>
           
-          <div class="form-group" v-if="formTransaksi.jenis === 'pengeluaran'">
+          <div class="form-group">
             <label>Kategori / Pos RAB</label>
-            <select v-model="formTransaksi.kategori_id">
-              <option value="">-- Pilih Kategori --</option>
-              <option v-for="kat in kategoriList" :key="kat.id" :value="kat.id">{{ kat.nama_kategori }}</option>
-            </select>
+            <SearchableSelect
+              v-model="formTransaksi.kategori_id"
+              v-model:manual-value="formTransaksi.input_kategori"
+              :options="kategoriList"
+              placeholder="Cari kategori RAB atau ketik nama baru..."
+              required
+            />
+            <small class="text-muted">Pilih dari daftar atau ketik nama baru untuk membuat pos RAB otomatis.</small>
           </div>
           
           <div class="form-group">

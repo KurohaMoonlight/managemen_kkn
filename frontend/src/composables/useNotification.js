@@ -101,3 +101,53 @@ export const useConfirm = () => {
 
   return { confirmState, confirm, handleConfirm, handleCancel };
 };
+
+// ─── PROMPT DIALOG ────────────────────────────────────────────────────────────
+const promptState = reactive({
+  visible: false,
+  title: '',
+  message: '',
+  value: '',
+  inputType: 'text',
+  placeholder: '',
+  confirmText: 'Simpan',
+  cancelText: 'Batal',
+  resolve: null,
+});
+
+export const usePrompt = () => {
+  const prompt = ({
+    title = 'Masukkan Data',
+    message = '',
+    defaultValue = '',
+    inputType = 'text',
+    placeholder = '',
+    confirmText = 'Simpan',
+    cancelText = 'Batal',
+  } = {}) => {
+    return new Promise((resolve) => {
+      promptState.visible = true;
+      promptState.title = title;
+      promptState.message = message;
+      promptState.value = defaultValue;
+      promptState.inputType = inputType;
+      promptState.placeholder = placeholder;
+      promptState.confirmText = confirmText;
+      promptState.cancelText = cancelText;
+      promptState.resolve = resolve;
+    });
+  };
+
+  const handlePromptConfirm = () => {
+    const val = promptState.value;
+    promptState.visible = false;
+    promptState.resolve?.(val);
+  };
+
+  const handlePromptCancel = () => {
+    promptState.visible = false;
+    promptState.resolve?.(null);
+  };
+
+  return { promptState, prompt, handlePromptConfirm, handlePromptCancel };
+};
