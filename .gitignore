@@ -1,0 +1,8 @@
+node_modules
+backend/.env
+
+# User-uploaded files (photos, PDFs, arsip) — keep folder structure only
+backend/uploads/*
+!backend/uploads/.gitkeep
+ngrok.log
+
