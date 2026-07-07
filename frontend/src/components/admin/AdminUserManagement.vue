@@ -98,6 +98,7 @@ const {
             <option value="Bendahara">Bendahara</option>
             <option value="Kordes">Kordes</option>
             <option value="Sekretaris">Sekretaris</option>
+            <option value="PDD">PDD (Dokumentasi)</option>
           </select>
         </div>
 
@@ -129,6 +130,7 @@ const {
             <option value="Bendahara">Bendahara</option>
             <option value="Kordes">Kordes</option>
             <option value="Sekretaris">Sekretaris</option>
+            <option value="PDD">PDD (Dokumentasi)</option>
           </select>
         </div>
         <div class="form-group">

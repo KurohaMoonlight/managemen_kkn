@@ -1016,6 +1016,22 @@ app.get('/api/users', authenticateToken, requireAdminOrAbove, async (req, res) =
 });
 
 // POST create mahasiswa (admin)
+// Helper: auto-create folder 'PDD' di posko jika belum ada
+const ensurePddFolder = async (poskoId) => {
+  if (!poskoId) return;
+  const [existing] = await pool.query(
+    `SELECT id FROM arsip_folders WHERE LOWER(nama_folder) = 'pdd' AND posko_id = ? AND parent_id IS NULL LIMIT 1`,
+    [poskoId]
+  );
+  if (existing.length === 0) {
+    await pool.query(
+      'INSERT INTO arsip_folders (nama_folder, parent_id, posko_id) VALUES (?, NULL, ?)',
+      ['PDD', poskoId]
+    );
+    console.log(`[Auto] Folder PDD dibuat untuk posko_id=${poskoId}`);
+  }
+};
+
 app.post('/api/users', authenticateToken, requireAdminOrAbove, async (req, res) => {
   const { nim, nama_lengkap, role, jabatan, password } = req.body;
   if (!nim || !nama_lengkap) return res.status(400).json({ message: 'NIM dan Nama wajib diisi.' });
@@ -1037,6 +1053,11 @@ app.post('/api/users', authenticateToken, requireAdminOrAbove, async (req, res) 
       'INSERT INTO users (nim, password, nama_lengkap, role, jabatan, posko_id) VALUES (?, ?, ?, ?, ?, ?)',
       [nim, hashedPassword, nama_lengkap, 'mahasiswa', userJabatan, poskoId]
     );
+
+    // Auto-create folder PDD jika jabatan PDD
+    if (userJabatan === 'PDD') {
+      await ensurePddFolder(poskoId);
+    }
 
     res.status(201).json({ success: true, message: 'Mahasiswa berhasil ditambahkan.' });
   } catch (error) {
@@ -1071,6 +1092,12 @@ app.put('/api/users/:id', authenticateToken, requireAdminOrAbove, async (req, re
     }
 
     await pool.query(query, params);
+
+    // Auto-create folder PDD jika jabatan diset ke PDD
+    if (userJabatan === 'PDD') {
+      await ensurePddFolder(poskoId);
+    }
+
     res.json({ success: true, message: 'Mahasiswa berhasil diperbarui.' });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengupdate pengguna.' });
@@ -1843,34 +1870,38 @@ app.post('/api/arsip/compress', authenticateToken, async (req, res) => {
     const uniqueZipName = Date.now() + '-' + safeZipName;
     const zipPath = path.join(uploadDir, uniqueZipName);
     const output = fs.createWriteStream(zipPath);
-    const archive = new archiver.ZipArchive({ zlib: { level: 9 } });
+    // Fix: gunakan archiver('zip', options) bukan new archiver.ZipArchive(...)
+    const archive = archiver('zip', { zlib: { level: 9 } });
 
-    output.on('close', async () => {
-      // Simpan ke DB
-      const tipe_file = 'document';
-      const url_file = `/uploads/${uniqueZipName}`;
-      await pool.query('INSERT INTO arsip_files (folder_id, tipe_file, nama_file, url_file, posko_id) VALUES (?, ?, ?, ?, ?)',
-        [folder_id || null, tipe_file, safeZipName, url_file, req.user.posko_id || null]);
-      res.json({ success: true, message: 'File berhasil dikompresi.' });
-    });
+    // Wrap dalam Promise agar bisa await dan response dikirim setelah selesai
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+      archive.on('error', reject);
+      archive.pipe(output);
 
-    archive.on('error', (err) => { throw err; });
-    archive.pipe(output);
-
-    files.forEach(f => {
-      if (f.url_file) {
-        const fullPath = path.join(uploadDir, path.basename(f.url_file));
-        if (fs.existsSync(fullPath) && fs.lstatSync(fullPath).isFile()) {
-           archive.file(fullPath, { name: f.nama_file });
+      files.forEach(f => {
+        if (f.url_file) {
+          const fullPath = path.join(uploadDir, path.basename(f.url_file));
+          if (fs.existsSync(fullPath) && fs.lstatSync(fullPath).isFile()) {
+            archive.file(fullPath, { name: f.nama_file });
+          }
         }
-      }
+      });
+      archive.finalize();
     });
-    archive.finalize();
+
+    // Simpan ke DB setelah archive selesai
+    const url_file = `/uploads/${uniqueZipName}`;
+    await pool.query('INSERT INTO arsip_files (folder_id, tipe_file, nama_file, url_file, posko_id) VALUES (?, ?, ?, ?, ?)',
+      [folder_id || null, 'document', safeZipName, url_file, req.user.posko_id || null]);
+    res.json({ success: true, message: 'File berhasil dikompresi.' });
   } catch (error) {
     console.error('Compress Error:', error);
     res.status(500).json({ message: 'Gagal melakukan kompresi.', error: error.message || String(error) });
   }
 });
+
 
 // EXTRACT MANUAL
 app.post('/api/arsip/extract', authenticateToken, async (req, res) => {
@@ -2446,7 +2477,7 @@ app.post('/api/bendahara/iuran/bayar', authenticateToken, async (req, res) => {
 app.get('/api/bendahara/pengajuan', authenticateToken, async (req, res) => {
   try {
     let query = `
-      SELECT p.*, u.nama_lengkap, k.nama_kategori 
+      SELECT p.*, u.nama_lengkap, u.jabatan AS pengaju_jabatan, k.nama_kategori 
       FROM keuangan_pengajuan p
       JOIN users u ON p.user_id = u.id
       JOIN keuangan_kategori k ON p.kategori_id = k.id
@@ -2514,6 +2545,41 @@ app.put('/api/bendahara/pengajuan/:id/status', authenticateToken, async (req, re
     res.json({ success: true, message: 'Status pengajuan diperbarui.' });
   } catch (error) {
     res.status(500).json({ message: 'Gagal memperbarui status pengajuan.' });
+  }
+});
+
+// ─── FITUR GALERI PDD ───────────────────────────────────────────────────────────
+// Mencari folder bernama 'PDD' di posko user, lalu return semua file image/video di dalamnya
+app.get('/api/arsip/pdd-gallery', authenticateToken, async (req, res) => {
+  try {
+    const poskoId = req.user.posko_id;
+    if (!poskoId) return res.status(403).json({ message: 'Tidak terhubung ke posko.' });
+
+    // Cari folder bernama 'PDD' (case-insensitive) di posko ini
+    const [folders] = await pool.query(
+      `SELECT id FROM arsip_folders WHERE LOWER(nama_folder) = 'pdd' AND posko_id = ? AND parent_id IS NULL LIMIT 1`,
+      [poskoId]
+    );
+
+    if (folders.length === 0) {
+      return res.json({ folder_exists: false, files: [] });
+    }
+
+    const pddFolderId = folders[0].id;
+
+    // Ambil semua file image/video di folder PDD
+    const [files] = await pool.query(
+      `SELECT id, nama_file, url_file, thumbnail_url, tipe_file, uploaded_at 
+       FROM arsip_files 
+       WHERE folder_id = ? AND posko_id = ? AND tipe_file IN ('image', 'video')
+       ORDER BY uploaded_at DESC`,
+      [pddFolderId, poskoId]
+    );
+
+    res.json({ folder_exists: true, folder_id: pddFolderId, files });
+  } catch (error) {
+    console.error('PDD Gallery Error:', error);
+    res.status(500).json({ message: 'Gagal mengambil galeri PDD.' });
   }
 });
 

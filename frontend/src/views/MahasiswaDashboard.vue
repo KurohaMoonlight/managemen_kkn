@@ -57,6 +57,7 @@ onMounted(() => {
   checkAbsensiStatus();
   fetchProkerData();
   checkPasswordSecurity();
+  checkPasswordSecurity();
 
   document.addEventListener('click', closeSettingsMenu);
   window.addEventListener('resize', closeSettingsMenu);
@@ -220,6 +221,8 @@ const refreshExplorer = () => {
   }
 };
 
+// ─── PDD GALLERY (Moved to /pdd) ───────────────────────────────────────────────
+
 onUnmounted(() => {
   document.removeEventListener('click', closeSettingsMenu);
   window.removeEventListener('resize', closeSettingsMenu);
@@ -254,7 +257,8 @@ onUnmounted(() => {
             <span v-if="isDefaultPassword" class="settings-dot"></span>
           </button>
         </div>
-        <router-link v-if="user?.jabatan === 'Bendahara'" to="/bendahara" class="btn-logout" style="background: #f59e0b; color: white; border-color: #f59e0b; text-decoration: none;">Ke Dashboard Bendahara</router-link>
+        <router-link v-if="user?.jabatan === 'Bendahara'" to="/bendahara" class="btn-logout" style="color: #f59e0b; border-color: #f59e0b; text-decoration: none;">Ke Dashboard Bendahara</router-link>
+        <router-link v-if="user?.jabatan === 'PDD'" to="/pdd" class="btn-logout" style="color: #6366f1; border-color: #6366f1; text-decoration: none;">Ke Dashboard PDD</router-link>
         <router-link v-if="user?.role === 'admin'" to="/admin" class="btn-logout" style="background: var(--color-primary); color: white; text-decoration: none;">Ke Dashboard Admin</router-link>
         <button @click="logout" class="btn-logout">Logout</button>
       </div>

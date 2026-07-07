@@ -5,6 +5,7 @@ import MahasiswaDashboard from '../views/MahasiswaDashboard.vue';
 import SuperadminDashboard from '../views/SuperadminDashboard.vue';
 import BendaharaDashboard from '../views/BendaharaDashboard.vue';
 import BlockedPosko from '../views/BlockedPosko.vue';
+import PddDashboard from '../views/PddDashboard.vue';
 
 import SuratGenerator from '../components/SuratGenerator.vue';
 
@@ -40,6 +41,12 @@ const routes = [
     path: '/mahasiswa',
     name: 'MahasiswaDashboard',
     component: MahasiswaDashboard,
+    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'] }
+  },
+  {
+    path: '/pdd',
+    name: 'PddDashboard',
+    component: PddDashboard,
     meta: { requiresAuth: true, role: ['mahasiswa', 'admin'] }
   },
   {

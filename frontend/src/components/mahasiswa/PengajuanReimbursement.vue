@@ -147,6 +147,7 @@ onMounted(() => {
         <thead>
           <tr style="background: #f1f5f9; text-align: left; border-bottom: 2px solid #e2e8f0;">
             <th style="padding: 1rem;">Tanggal</th>
+            <th style="padding: 1rem;">Pengaju</th>
             <th style="padding: 1rem;">Kategori</th>
             <th style="padding: 1rem;">Keterangan</th>
             <th style="padding: 1rem;">Nominal</th>
@@ -157,10 +158,14 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr v-if="pengajuanList.length === 0">
-            <td colspan="7" style="padding: 2rem; text-align: center; color: #64748b;">Belum ada riwayat pengajuan.</td>
+            <td colspan="8" style="padding: 2rem; text-align: center; color: #64748b;">Belum ada riwayat pengajuan.</td>
           </tr>
           <tr v-for="p in pengajuanList" :key="p.id" style="border-bottom: 1px solid #f1f5f9;">
             <td style="padding: 1rem;">{{ new Date(p.created_at).toLocaleDateString('id-ID') }}</td>
+            <td style="padding: 1rem;">
+              <div style="font-weight: 600; color: #1e293b;">{{ p.nama_lengkap }}</div>
+              <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">{{ p.pengaju_jabatan || 'Anggota' }}</div>
+            </td>
             <td style="padding: 1rem; font-weight: 500;">{{ p.nama_kategori }}</td>
             <td style="padding: 1rem; font-size: 0.9rem;">{{ p.keterangan }}</td>
             <td style="padding: 1rem; color: #ef4444; font-weight: 600;">{{ formatRupiah(p.nominal) }}</td>
