@@ -109,7 +109,7 @@ const authenticateToken = (req, res, next) => {
     if (err) return res.status(403).json({ message: 'Token tidak valid' });
     
     try {
-      const [rows] = await pool.query('SELECT id, role, posko_id FROM users WHERE id = ?', [decodedUser.id]);
+      const [rows] = await pool.query('SELECT id, role, posko_id, jabatan FROM users WHERE id = ?', [decodedUser.id]);
       if (rows.length === 0) {
         return res.status(401).json({ message: 'Sesi tidak valid (Akun telah dihapus atau reset). Silakan login kembali.' });
       }
@@ -118,7 +118,8 @@ const authenticateToken = (req, res, next) => {
       req.user = {
         ...decodedUser,
         role: dbUser.role,
-        posko_id: dbUser.posko_id
+        posko_id: dbUser.posko_id,
+        jabatan: dbUser.jabatan,
       };
       
       if (req.user.role !== 'superadmin' && !req.user.posko_id) {
@@ -140,6 +141,13 @@ const requireSuperadmin = (req, res, next) => {
 
 const requireAdminOrAbove = (req, res, next) => {
   if (!['admin', 'superadmin'].includes(req.user?.role)) return res.status(403).json({ message: 'Akses ditolak.' });
+  next();
+};
+
+const requireBendaharaOrAdmin = (req, res, next) => {
+  if (req.user?.jabatan !== 'Bendahara' && req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Akses ditolak. Hanya Bendahara atau Admin.' });
+  }
   next();
 };
 
@@ -2247,8 +2255,7 @@ app.get('/api/bendahara/kategori', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/bendahara/kategori', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/bendahara/kategori', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   const { nama_kategori, plafon_dana } = req.body;
   if (!nama_kategori) return res.status(400).json({ message: 'Nama Kategori harus diisi' });
   try {
@@ -2259,8 +2266,7 @@ app.post('/api/bendahara/kategori', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/bendahara/kategori/:id', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.put('/api/bendahara/kategori/:id', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   const { nama_kategori, plafon_dana } = req.body;
   try {
     await pool.query('UPDATE keuangan_kategori SET nama_kategori = ?, plafon_dana = ? WHERE id = ? AND posko_id = ?', [nama_kategori, plafon_dana, req.params.id, req.user.posko_id]);
@@ -2270,8 +2276,7 @@ app.put('/api/bendahara/kategori/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.delete('/api/bendahara/kategori/:id', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.delete('/api/bendahara/kategori/:id', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM keuangan_kategori WHERE id = ? AND posko_id = ?', [req.params.id, req.user.posko_id]);
     res.json({ success: true, message: 'Kategori berhasil dihapus.' });
@@ -2280,7 +2285,7 @@ app.delete('/api/bendahara/kategori/:id', authenticateToken, async (req, res) =>
   }
 });
 
-app.get('/api/bendahara/transaksi', authenticateToken, async (req, res) => {
+app.get('/api/bendahara/transaksi', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     const [transaksi] = await pool.query(`
       SELECT t.*, k.nama_kategori, f.url_file as nota_url 
@@ -2296,8 +2301,7 @@ app.get('/api/bendahara/transaksi', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/bendahara/transaksi', authenticateToken, upload.single('nota'), compressImages, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/bendahara/transaksi', authenticateToken, requireBendaharaOrAdmin, upload.single('nota'), compressImages, async (req, res) => {
   const { kategori_id, jenis, nominal, tanggal, keterangan, nama_kategori_manual } = req.body;
   const file = req.file;
 
@@ -2363,8 +2367,7 @@ app.post('/api/bendahara/transaksi', authenticateToken, upload.single('nota'), c
   }
 });
 
-app.delete('/api/bendahara/transaksi/:id', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.delete('/api/bendahara/transaksi/:id', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     await pool.query('DELETE FROM keuangan_transaksi WHERE id = ? AND posko_id = ?', [req.params.id, req.user.posko_id]);
     res.json({ success: true, message: 'Transaksi berhasil dihapus.' });
@@ -2373,7 +2376,7 @@ app.delete('/api/bendahara/transaksi/:id', authenticateToken, async (req, res) =
   }
 });
 
-app.get('/api/bendahara/keuangan-folder', authenticateToken, async (req, res) => {
+app.get('/api/bendahara/keuangan-folder', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     let keuanganFolderId;
     const [folders] = await pool.query('SELECT id FROM arsip_folders WHERE parent_id IS NULL AND nama_folder = "Keuangan" AND posko_id = ?', [req.user.posko_id]);
@@ -2389,7 +2392,7 @@ app.get('/api/bendahara/keuangan-folder', authenticateToken, async (req, res) =>
   }
 });
 
-app.get('/api/bendahara/summary', authenticateToken, async (req, res) => {
+app.get('/api/bendahara/summary', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     const [masukRes] = await pool.query('SELECT SUM(nominal) as total FROM keuangan_transaksi WHERE jenis="pemasukan" AND posko_id=?', [req.user.posko_id]);
     const [keluarRes] = await pool.query('SELECT SUM(nominal) as total FROM keuangan_transaksi WHERE jenis="pengeluaran" AND posko_id=?', [req.user.posko_id]);
@@ -2427,7 +2430,7 @@ app.get('/api/bendahara/summary', authenticateToken, async (req, res) => {
 });
 
 // ─── FITUR IURAN ANGGOTA ────────────────────────────────────────────────────────
-app.get('/api/bendahara/iuran', authenticateToken, async (req, res) => {
+app.get('/api/bendahara/iuran', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     const [poskoRows] = await pool.query('SELECT iuran_interval FROM posko WHERE id = ?', [req.user.posko_id]);
     const iuran_interval = poskoRows[0]?.iuran_interval || 'sekali';
@@ -2448,8 +2451,7 @@ app.get('/api/bendahara/iuran', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/bendahara/iuran/target', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/bendahara/iuran/target', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
     const { nominal_target, iuran_interval } = req.body;
     
@@ -2473,8 +2475,7 @@ app.post('/api/bendahara/iuran/target', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/bendahara/iuran/bayar', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.post('/api/bendahara/iuran/bayar', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   const { user_id, nominal_bayar } = req.body;
   try {
     const [rows] = await pool.query('SELECT nominal_target, nominal_terbayar FROM keuangan_iuran WHERE posko_id = ? AND user_id = ?', [req.user.posko_id, user_id]);
@@ -2543,15 +2544,26 @@ app.get('/api/bendahara/pengajuan', authenticateToken, async (req, res) => {
 
 app.post('/api/bendahara/pengajuan', authenticateToken, upload.single('nota'), compressImages, async (req, res) => {
   const { kategori_id, nominal, keterangan } = req.body;
+  if (!kategori_id || !nominal || !keterangan?.trim()) {
+    return res.status(400).json({ message: 'Kategori, nominal, dan keterangan wajib diisi.' });
+  }
+  const nominalNum = Number(nominal);
+  if (isNaN(nominalNum) || nominalNum <= 0) {
+    return res.status(400).json({ message: 'Nominal harus lebih dari 0.' });
+  }
   let file_nota_url = null;
   if (req.file) {
     file_nota_url = `/uploads/${req.file.filename}`;
   }
   try {
+    const [kat] = await pool.query('SELECT id FROM keuangan_kategori WHERE id = ? AND posko_id = ?', [kategori_id, req.user.posko_id]);
+    if (kat.length === 0) {
+      return res.status(400).json({ message: 'Kategori RAB tidak valid.' });
+    }
     await pool.query(`
       INSERT INTO keuangan_pengajuan (posko_id, user_id, kategori_id, nominal, keterangan, file_nota_url)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [req.user.posko_id, req.user.id, kategori_id, nominal, keterangan, file_nota_url]);
+    `, [req.user.posko_id, req.user.id, kategori_id, nominalNum, keterangan.trim(), file_nota_url]);
     res.json({ success: true, message: 'Pengajuan berhasil dikirim.' });
   } catch (error) {
     console.error(error);
@@ -2559,43 +2571,84 @@ app.post('/api/bendahara/pengajuan', authenticateToken, upload.single('nota'), c
   }
 });
 
-app.put('/api/bendahara/pengajuan/:id/status', authenticateToken, async (req, res) => {
-  if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+app.put('/api/bendahara/pengajuan/:id/status', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   const { status, catatan_bendahara } = req.body;
+  if (!['disetujui', 'ditolak'].includes(status)) {
+    return res.status(400).json({ message: 'Status tidak valid.' });
+  }
+  if (status === 'ditolak' && !catatan_bendahara?.trim()) {
+    return res.status(400).json({ message: 'Alasan penolakan wajib diisi.' });
+  }
+
+  const connection = await pool.getConnection();
   try {
-    await pool.query(`
-      UPDATE keuangan_pengajuan 
-      SET status = ?, catatan_bendahara = ?
-      WHERE id = ? AND posko_id = ?
-    `, [status, catatan_bendahara || null, req.params.id, req.user.posko_id]);
-    
+    await connection.beginTransaction();
+
+    const [existing] = await connection.query(
+      'SELECT * FROM keuangan_pengajuan WHERE id = ? AND posko_id = ? FOR UPDATE',
+      [req.params.id, req.user.posko_id]
+    );
+    if (existing.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Pengajuan tidak ditemukan.' });
+    }
+    const pengajuan = existing[0];
+    if (pengajuan.status !== 'pending') {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Pengajuan sudah diproses sebelumnya.' });
+    }
+
     if (status === 'disetujui') {
-      const [rows] = await pool.query(`
-        SELECT p.*, u.nama_lengkap, u.nim 
-        FROM keuangan_pengajuan p
-        JOIN users u ON p.user_id = u.id
-        WHERE p.id = ?
-      `, [req.params.id]);
-      if (rows.length > 0) {
-        const p = rows[0];
-        let fileNotaId = null;
-        if (p.file_nota_url) {
-           const [fRes] = await pool.query(`
-              INSERT INTO arsip_files (folder_id, tipe_file, nama_file, url_file, posko_id) 
-              VALUES (NULL, 'image', ?, ?, ?)
-           `, [`Nota_Reimburse_${p.id}.jpg`, p.file_nota_url, p.posko_id]);
-           fileNotaId = fRes.insertId;
-        }
-        const pengajuLabel = p.nim ? `${p.nama_lengkap} (${p.nim})` : p.nama_lengkap;
-        await pool.query(`
-          INSERT INTO keuangan_transaksi (posko_id, kategori_id, jenis, nominal, tanggal, keterangan, file_nota_id, user_id)
-          VALUES (?, ?, 'pengeluaran', ?, CURDATE(), ?, ?, ?)
-        `, [p.posko_id, p.kategori_id, p.nominal, `Reimbursement - ${pengajuLabel}: ${p.keterangan}`, fileNotaId, req.user.id]);
+      const [[masukRow]] = await connection.query(
+        'SELECT COALESCE(SUM(nominal), 0) as total FROM keuangan_transaksi WHERE jenis = "pemasukan" AND posko_id = ?',
+        [req.user.posko_id]
+      );
+      const [[keluarRow]] = await connection.query(
+        'SELECT COALESCE(SUM(nominal), 0) as total FROM keuangan_transaksi WHERE jenis = "pengeluaran" AND posko_id = ?',
+        [req.user.posko_id]
+      );
+      const saldo = Number(masukRow.total) - Number(keluarRow.total);
+      if (saldo < Number(pengajuan.nominal)) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: `Saldo kas tidak mencukupi. Saldo saat ini ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(saldo)}.`,
+        });
       }
     }
+
+    await connection.query(
+      'UPDATE keuangan_pengajuan SET status = ?, catatan_bendahara = ? WHERE id = ? AND posko_id = ?',
+      [status, catatan_bendahara?.trim() || null, req.params.id, req.user.posko_id]
+    );
+
+    if (status === 'disetujui') {
+      const [uRows] = await connection.query('SELECT nama_lengkap, nim FROM users WHERE id = ?', [pengajuan.user_id]);
+      const u = uRows[0] || {};
+      let fileNotaId = null;
+      if (pengajuan.file_nota_url) {
+        const ext = pengajuan.file_nota_url.split('.').pop() || 'jpg';
+        const mime = ext.toLowerCase() === 'pdf' ? 'application/pdf' : 'image';
+        const [fRes] = await connection.query(
+          'INSERT INTO arsip_files (folder_id, tipe_file, nama_file, url_file, posko_id) VALUES (NULL, ?, ?, ?, ?)',
+          [mime, `Nota_Reimburse_${pengajuan.id}.${ext}`, pengajuan.file_nota_url, pengajuan.posko_id]
+        );
+        fileNotaId = fRes.insertId;
+      }
+      const pengajuLabel = u.nim ? `${u.nama_lengkap} (${u.nim})` : (u.nama_lengkap || 'Anggota');
+      await connection.query(
+        'INSERT INTO keuangan_transaksi (posko_id, kategori_id, jenis, nominal, tanggal, keterangan, file_nota_id, user_id) VALUES (?, ?, "pengeluaran", ?, CURDATE(), ?, ?, ?)',
+        [pengajuan.posko_id, pengajuan.kategori_id, pengajuan.nominal, `Reimbursement - ${pengajuLabel}: ${pengajuan.keterangan}`, fileNotaId, req.user.id]
+      );
+    }
+
+    await connection.commit();
     res.json({ success: true, message: 'Status pengajuan diperbarui.' });
   } catch (error) {
+    await connection.rollback();
+    console.error(error);
     res.status(500).json({ message: 'Gagal memperbarui status pengajuan.' });
+  } finally {
+    connection.release();
   }
 });
 

@@ -81,6 +81,7 @@
             v-if="promptState.inputType === 'currency'"
             v-model="promptState.value"
             :placeholder="promptState.placeholder || '0'"
+            :show-hint="false"
             autofocus
             @keydown.enter="handlePromptConfirm"
             @keydown.escape="handlePromptCancel"

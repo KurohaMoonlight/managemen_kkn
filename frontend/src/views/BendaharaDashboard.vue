@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
 import { Pie } from 'vue-chartjs';
@@ -31,6 +31,7 @@ const iuranList = ref([]);
 const iuranTarget = ref('');
 const isSettingTarget = ref(false);
 const pengajuanList = ref([]);
+const pengajuanProcessingId = ref(null);
 const iuranInterval = ref('sekali');
 
 const iuranIntervalLabels = {
@@ -59,8 +60,24 @@ const getKategoriProgress = (kat) => {
 const showModalKategori = ref(false);
 const formKategori = ref({ id: null, nama_kategori: '', plafon_dana: '' });
 
+const todayDate = () => new Date().toISOString().split('T')[0];
+
+const openModalTransaksi = () => {
+  formTransaksi.value = {
+    jenis: 'pengeluaran',
+    kategori_id: '',
+    input_kategori: '',
+    nominal: '',
+    tanggal: todayDate(),
+    keterangan: '',
+    file: null,
+  };
+  fileNotaPreview.value = null;
+  if (fileNotaRef.value) fileNotaRef.value.value = null;
+  showModalTransaksi.value = true;
+};
 const showModalTransaksi = ref(false);
-const formTransaksi = ref({ jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: '', tanggal: '', keterangan: '', file: null });
+const formTransaksi = ref({ jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: '', tanggal: todayDate(), keterangan: '', file: null });
 const fileNotaPreview = ref(null);
 const fileNotaRef = ref(null);
 
@@ -125,7 +142,9 @@ const fetchIuran = async () => {
       const data = await res.json();
       iuranList.value = data.list || [];
       iuranInterval.value = data.iuran_interval || 'sekali';
-      if (iuranList.value.length > 0) iuranTarget.value = iuranList.value[0].nominal_target;
+      if (iuranList.value.length > 0 && iuranList.value[0].nominal_target) {
+        iuranTarget.value = String(iuranList.value[0].nominal_target);
+      }
     }
   } catch(e) { console.error(e) }
 };
@@ -139,7 +158,7 @@ const fetchPengajuan = async () => {
 
 // --- KATEGORI (RAB) ACTIONS ---
 const editKategori = (k) => {
-  formKategori.value = { ...k };
+  formKategori.value = { ...k, plafon_dana: k.plafon_dana ? String(k.plafon_dana) : '' };
   showModalKategori.value = true;
 };
 const resetFormKategori = () => {
@@ -199,7 +218,7 @@ const onFileChange = (e) => {
   }
 };
 const resetFormTransaksi = () => {
-  formTransaksi.value = { jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: '', tanggal: '', keterangan: '', file: null };
+  formTransaksi.value = { jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: '', tanggal: todayDate(), keterangan: '', file: null };
   fileNotaPreview.value = null;
   if (fileNotaRef.value) fileNotaRef.value.value = null;
   showModalTransaksi.value = false;
@@ -376,6 +395,10 @@ const lpjSummary = computed(() => {
 });
 
 const exportPDF = () => {
+  if (filteredLpjList.value.length === 0) {
+    toastInfo('Tidak ada data untuk diekspor.');
+    return;
+  }
   const element = lpjTableRef.value;
   const opt = {
     margin: 1,
@@ -389,6 +412,11 @@ const exportPDF = () => {
 
 // --- IURAN METHODS ---
 const saveIuranTarget = async () => {
+  const target = toCurrencyNumber(iuranTarget.value);
+  if (!target || target <= 0) {
+    toastWarning('Target iuran harus lebih dari Rp 0.');
+    return;
+  }
   const intervalLabel = iuranIntervalLabels[iuranInterval.value] || iuranInterval.value;
   if (!(await confirm({
     title: 'Ubah Target Iuran?',
@@ -448,6 +476,7 @@ const promptBayarIuran = async (userObj) => {
 
 // --- PENGAJUAN METHODS ---
 const updatePengajuan = async (p, newStatus) => {
+  if (pengajuanProcessingId.value) return;
   let catatan = '';
   if (newStatus === 'ditolak') {
     catatan = await prompt({
@@ -457,21 +486,27 @@ const updatePengajuan = async (p, newStatus) => {
       confirmText: 'Tolak Pengajuan',
     });
     if (catatan === null) return;
+    if (!catatan.trim()) {
+      toastWarning('Alasan penolakan wajib diisi.');
+      return;
+    }
   } else {
     if (!(await confirm({
       title: 'Setujui Pengajuan?',
-      message: `Setujui pengajuan sebesar ${formatRupiah(p.nominal)} dari ${p.nama_lengkap}${p.nim ? ` (${p.nim})` : ''}?\n\nSaldo Kas akan otomatis terpotong.`,
+      message: `Setujui pengajuan sebesar ${formatRupiah(p.nominal)} dari ${p.nama_lengkap}${p.nim ? ` (${p.nim})` : ''}?\n\nSaldo kas saat ini: ${formatRupiah(summary.value.saldo)}\nSaldo akan otomatis terpotong.`,
       type: 'info',
       confirmText: 'Ya, Setujui',
     }))) return;
   }
-  
+
+  pengajuanProcessingId.value = p.id;
   try {
     const res = await fetch(`/api/bendahara/pengajuan/${p.id}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
-      body: JSON.stringify({ status: newStatus, catatan_bendahara: catatan })
+      body: JSON.stringify({ status: newStatus, catatan_bendahara: catatan.trim() })
     });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       toastSuccess(`Pengajuan berhasil ${newStatus === 'disetujui' ? 'disetujui' : 'ditolak'}!`);
       fetchPengajuan();
@@ -479,8 +514,14 @@ const updatePengajuan = async (p, newStatus) => {
         fetchTransaksi();
         fetchSummary();
       }
-    } else toastError('Gagal memperbarui status pengajuan.');
-  } catch(e) { console.error(e) }
+    } else {
+      toastError(data.message || 'Gagal memperbarui status pengajuan.');
+    }
+  } catch(e) {
+    toastError('Terjadi kesalahan jaringan.');
+  } finally {
+    pengajuanProcessingId.value = null;
+  }
 };
 
 const exportExcel = async () => {
@@ -552,6 +593,7 @@ const exportExcel = async () => {
 
 // --- FILE EXPLORER KEUANGAN ---
 const keuanganRootFolderId = ref(null);
+const explorerReady = ref(false);
 const explorerCurrentFolderId = ref(null);
 const explorerFolders = ref([]);
 const explorerFiles = ref([]);
@@ -569,9 +611,12 @@ const initKeuanganExplorer = async () => {
     if (res.ok) {
       const data = await res.json();
       keuanganRootFolderId.value = data.id;
+      explorerReady.value = true;
       if (activeTab.value === 'explorer') {
         openRootExplorer();
       }
+    } else {
+      toastError('Gagal memuat folder Keuangan.');
     }
   } catch(e) {
     console.error(e);
@@ -583,36 +628,36 @@ const openRootExplorer = () => {
   fetchExplorerDirectory(keuanganRootFolderId.value);
 };
 
-const fetchExplorerDirectory = async (folderId, search = '') => {
-  if (!folderId && !search) return;
+const fetchExplorerDirectory = async (folderId) => {
+  if (!folderId) return;
   try {
-    let url = `/api/arsip/directory?limit=100`;
-    if (search) {
-      url += `&search=${encodeURIComponent(search)}`;
-    } else {
-      url += `&parentId=${folderId}`;
-    }
-    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token.value}` } });
+    const res = await fetch(`/api/arsip/directory?parentId=${folderId}&limit=100`, {
+      headers: { 'Authorization': `Bearer ${token.value}` }
+    });
     if (res.ok) {
       const data = await res.json();
-      explorerFolders.value = data.folders;
-      explorerFiles.value = data.files;
-      if (!search) explorerCurrentFolderId.value = folderId;
+      const q = explorerSearchQuery.value.trim().toLowerCase();
+      explorerFolders.value = q
+        ? data.folders.filter(f => f.nama_folder.toLowerCase().includes(q))
+        : data.folders;
+      explorerFiles.value = q
+        ? data.files.filter(f => f.nama_file.toLowerCase().includes(q))
+        : data.files;
+      explorerCurrentFolderId.value = folderId;
     }
   } catch (err) {
     console.error(err);
+    toastError('Gagal memuat isi folder.');
   }
 };
 
 const handleExplorerSearch = () => {
-  if (explorerSearchQuery.value) {
-    fetchExplorerDirectory(null, explorerSearchQuery.value);
-  } else {
-    const parentId = explorerPathHistory.value.length > 0 
-      ? explorerPathHistory.value[explorerPathHistory.value.length - 1] 
-      : keuanganRootFolderId.value;
-    fetchExplorerDirectory(parentId);
+  const parentId = explorerCurrentFolderId.value || keuanganRootFolderId.value;
+  if (!parentId) {
+    toastWarning('Folder Keuangan belum siap. Tunggu sebentar...');
+    return;
   }
+  fetchExplorerDirectory(parentId);
 };
 
 const openExplorerFolder = (folder) => {
@@ -631,11 +676,16 @@ const goBackExplorer = () => {
 
 const createFolder = async () => {
   if (!folderFormName.value.trim()) return;
+  const parentId = explorerCurrentFolderId.value || keuanganRootFolderId.value;
+  if (!parentId) {
+    toastWarning('Folder Keuangan belum siap. Tunggu sebentar...');
+    return;
+  }
   try {
     const res = await fetch('/api/arsip/folders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.value}` },
-      body: JSON.stringify({ nama_folder: folderFormName.value, parent_id: explorerCurrentFolderId.value })
+      body: JSON.stringify({ nama_folder: folderFormName.value, parent_id: parentId })
     });
     if (res.ok) {
       showCreateFolderModal.value = false;
@@ -749,6 +799,9 @@ const deleteExplorerItem = async () => {
 };
 
 window.addEventListener('click', closeContextMenu);
+onBeforeUnmount(() => {
+  window.removeEventListener('click', closeContextMenu);
+});
 </script>
 
 <template>
@@ -779,7 +832,7 @@ window.addEventListener('click', closeContextMenu);
         <button :class="['tab-btn', { active: activeTab === 'aruskas' }]" @click="activeTab = 'aruskas'">💸 Arus Kas</button>
         <button :class="['tab-btn', { active: activeTab === 'iuran' }]" @click="activeTab = 'iuran'">👥 Iuran Anggota</button>
         <button :class="['tab-btn', { active: activeTab === 'pengajuan' }]" @click="activeTab = 'pengajuan'">📩 Pengajuan Kas</button>
-        <button :class="['tab-btn', { active: activeTab === 'explorer' }]" @click="activeTab = 'explorer'; if(keuanganRootFolderId && explorerPathHistory.length===0) openRootExplorer()">📁 File Explorer Nota</button>
+        <button :class="['tab-btn', { active: activeTab === 'explorer' }]" @click="activeTab = 'explorer'; if (explorerReady && explorerPathHistory.length === 0) openRootExplorer()">📁 File Explorer Nota</button>
         <button :class="['tab-btn', { active: activeTab === 'lpj' }]" @click="activeTab = 'lpj'">🖨️ Cetak LPJ</button>
       </div>
 
@@ -891,7 +944,7 @@ window.addEventListener('click', closeContextMenu);
         <div class="glass-card">
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2>Catatan Arus Kas</h2>
-            <button @click="showModalTransaksi = true" class="btn-primary">+ Tambah Transaksi</button>
+            <button @click="openModalTransaksi" class="btn-primary">+ Tambah Transaksi</button>
           </div>
           <div class="table-container">
             <table class="data-table">
@@ -949,7 +1002,7 @@ window.addEventListener('click', closeContextMenu);
               <button @click="showCreateFolderModal = true" class="btn-primary" style="background: var(--color-primary); color: white;">+ Buat Folder</button>
             </div>
             <div class="search-box" style="position: relative; flex: 1; max-width: 250px;">
-              <input type="text" v-model="explorerSearchQuery" @keyup.enter="handleExplorerSearch" placeholder="Cari nota..." style="width: 100%; padding: 0.5rem 1rem; border: 1px solid var(--color-border); border-radius: 8px; font-size: 0.9rem;" />
+              <input type="text" v-model="explorerSearchQuery" @keyup.enter="handleExplorerSearch" placeholder="Cari di folder ini..." style="width: 100%; padding: 0.5rem 1rem; border: 1px solid var(--color-border); border-radius: 8px; font-size: 0.9rem;" />
             </div>
           </div>
 
@@ -1033,6 +1086,9 @@ window.addEventListener('click', closeContextMenu);
                 </tr>
               </thead>
               <tbody>
+                <tr v-if="iuranList.length === 0">
+                  <td colspan="5" class="text-center text-muted" style="padding: 2rem;">Belum ada anggota posko atau target iuran belum diatur.</td>
+                </tr>
                 <tr v-for="u in iuranList" :key="u.user_id">
                   <td style="font-weight: 500;">{{ u.nama_lengkap }}</td>
                   <td>{{ formatRupiah(u.nominal_target) }}</td>
@@ -1101,8 +1157,8 @@ window.addEventListener('click', closeContextMenu);
                   </td>
                   <td>
                     <div v-if="p.status === 'pending'" style="display: flex; gap: 5px;">
-                      <button class="btn-primary btn-small" @click="updatePengajuan(p, 'disetujui')" style="background: #10b981; border: none; padding: 4px 8px;">Setujui</button>
-                      <button class="btn-outline btn-small" @click="updatePengajuan(p, 'ditolak')" style="border-color: #ef4444; color: #ef4444; padding: 4px 8px;">Tolak</button>
+                      <button class="btn-primary btn-small" @click="updatePengajuan(p, 'disetujui')" :disabled="pengajuanProcessingId === p.id" style="background: #10b981; border: none; padding: 4px 8px;">{{ pengajuanProcessingId === p.id ? '...' : 'Setujui' }}</button>
+                      <button class="btn-outline btn-small" @click="updatePengajuan(p, 'ditolak')" :disabled="pengajuanProcessingId === p.id" style="border-color: #ef4444; color: #ef4444; padding: 4px 8px;">Tolak</button>
                     </div>
                     <span v-else class="text-muted" style="font-size: 0.85rem;">{{ p.catatan_bendahara || '-' }}</span>
                   </td>
@@ -1169,7 +1225,7 @@ window.addEventListener('click', closeContextMenu);
                     <td style="padding: 0.5rem; text-align: right; color: #ef4444;">{{ formatRupiah(lpjSummary.keluar) }}</td>
                   </tr>
                   <tr style="font-weight: bold; font-size: 1rem; background: #e0f2fe;">
-                    <td colspan="4" style="padding: 0.75rem; text-align: right;">SALDO AKHIR:</td>
+                    <td colspan="4" style="padding: 0.75rem; text-align: right;">SALDO PERIODE:</td>
                     <td colspan="2" style="padding: 0.75rem; text-align: center; color: #0369a1;">{{ formatRupiah(lpjSummary.saldo) }}</td>
                   </tr>
                 </tbody>

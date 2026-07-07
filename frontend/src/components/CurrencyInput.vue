@@ -1,9 +1,8 @@
 <script setup>
-import { ref, watch, onMounted, nextTick } from 'vue';
+import { ref, watch, computed, onMounted, nextTick } from 'vue';
 import {
   formatCurrencyInput,
-  countDigitsBefore,
-  cursorPosFromDigitIndex,
+  formatRupiah,
   normalizeCurrencyDigits,
 } from '../composables/useCurrencyInput.js';
 
@@ -15,51 +14,115 @@ const props = defineProps({
   inputStyle: { type: [String, Object], default: '' },
   maxDigits: { type: Number, default: 12 },
   autofocus: { type: Boolean, default: false },
+  showHint: { type: Boolean, default: true },
 });
 
 const emit = defineEmits(['update:modelValue', 'keydown']);
 
 const inputRef = ref(null);
 const isFocused = ref(false);
+const internalDigits = ref('');
 const displayValue = ref('');
 
-const toFormatted = (val) => formatCurrencyInput(normalizeCurrencyDigits(val, props.maxDigits));
+const livePreview = computed(() => {
+  if (!internalDigits.value) return '';
+  return formatRupiah(internalDigits.value);
+});
 
-const syncFromModel = () => {
-  if (isFocused.value) return;
-  displayValue.value = toFormatted(props.modelValue);
-};
-
-watch(() => props.modelValue, syncFromModel, { immediate: true });
-
-const onFocus = () => {
-  isFocused.value = true;
-  displayValue.value = toFormatted(props.modelValue);
-};
-
-const onInput = (e) => {
-  const el = e.target;
-  const cursorPos = el.selectionStart ?? 0;
-  const digitsBeforeCursor = countDigitsBefore(el.value, cursorPos);
-
-  const digits = normalizeCurrencyDigits(el.value, props.maxDigits);
-  const formatted = formatCurrencyInput(digits);
-
-  displayValue.value = formatted;
+const applyDigits = (raw) => {
+  const digits = normalizeCurrencyDigits(raw, props.maxDigits);
+  internalDigits.value = digits;
+  displayValue.value = formatCurrencyInput(digits);
   emit('update:modelValue', digits);
 
   nextTick(() => {
-    if (!inputRef.value) return;
-    const newPos = cursorPosFromDigitIndex(formatted, Math.min(digitsBeforeCursor, digits.length));
-    inputRef.value.setSelectionRange(newPos, newPos);
+    if (inputRef.value) {
+      const pos = displayValue.value.length;
+      inputRef.value.setSelectionRange(pos, pos);
+    }
   });
+};
+
+const syncFromProps = () => {
+  if (isFocused.value) return;
+  const digits = normalizeCurrencyDigits(props.modelValue, props.maxDigits);
+  internalDigits.value = digits;
+  displayValue.value = formatCurrencyInput(digits);
+};
+
+watch(() => props.modelValue, syncFromProps, { immediate: true });
+
+const isAllSelected = (el) =>
+  el.selectionStart === 0 && el.selectionEnd === displayValue.value.length && displayValue.value.length > 0;
+
+const onFocus = () => {
+  isFocused.value = true;
+  internalDigits.value = normalizeCurrencyDigits(props.modelValue, props.maxDigits);
+  displayValue.value = formatCurrencyInput(internalDigits.value);
 };
 
 const onBlur = () => {
   isFocused.value = false;
-  const digits = normalizeCurrencyDigits(displayValue.value, props.maxDigits);
-  displayValue.value = formatCurrencyInput(digits);
-  emit('update:modelValue', digits);
+  applyDigits(internalDigits.value);
+};
+
+const onKeyDown = (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const el = e.target;
+
+  if (/^\d$/.test(e.key)) {
+    e.preventDefault();
+    const base = isAllSelected(el) ? '' : internalDigits.value;
+    if (base.length >= props.maxDigits) return;
+    applyDigits(base + e.key);
+    return;
+  }
+
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    if (isAllSelected(el) || !internalDigits.value) {
+      applyDigits('');
+    } else {
+      applyDigits(internalDigits.value.slice(0, -1));
+    }
+    return;
+  }
+
+  if (e.key === 'Delete') {
+    e.preventDefault();
+    if (isAllSelected(el)) {
+      applyDigits('');
+    } else {
+      applyDigits(internalDigits.value.slice(0, -1));
+    }
+    return;
+  }
+
+  // Blokir karakter selain navigasi
+  const allowed = ['Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Escape'];
+  if (e.key.length === 1 && !allowed.includes(e.key)) {
+    e.preventDefault();
+  }
+};
+
+const onPaste = (e) => {
+  e.preventDefault();
+  const pasted = e.clipboardData?.getData('text') || '';
+  const el = e.target;
+  const base = isAllSelected(el) ? '' : internalDigits.value;
+  applyDigits(base + pasted);
+};
+
+// Cegah input langsung yang bisa mengacaukan format
+const onBeforeInput = (e) => {
+  if (e.inputType === 'insertFromPaste') return;
+  e.preventDefault();
+};
+
+const handleKeyDown = (e) => {
+  onKeyDown(e);
+  emit('keydown', e);
 };
 
 onMounted(() => {
@@ -70,28 +133,39 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="currency-input-wrap">
-    <span class="currency-prefix">Rp</span>
-    <input
-      ref="inputRef"
-      type="text"
-      inputmode="numeric"
-      class="currency-input"
-      :class="inputClass"
-      :style="inputStyle"
-      :value="displayValue"
-      :placeholder="placeholder"
-      :required="required && !modelValue"
-      autocomplete="off"
-      @focus="onFocus"
-      @input="onInput"
-      @blur="onBlur"
-      @keydown="$emit('keydown', $event)"
-    />
+  <div class="currency-field">
+    <div class="currency-input-wrap">
+      <span class="currency-prefix">Rp</span>
+      <input
+        ref="inputRef"
+        type="text"
+        inputmode="numeric"
+        class="currency-input"
+        :class="inputClass"
+        :style="inputStyle"
+        :value="displayValue"
+        :placeholder="placeholder"
+        :required="required && !modelValue"
+        autocomplete="off"
+        @focus="onFocus"
+        @blur="onBlur"
+        @keydown="handleKeyDown"
+        @paste="onPaste"
+        @beforeinput="onBeforeInput"
+      />
+    </div>
+    <p v-if="showHint && (isFocused || internalDigits)" class="currency-hint">
+      <template v-if="internalDigits">= {{ livePreview }}</template>
+      <template v-else>Ketik angka saja, contoh: 120000 untuk Rp 120.000</template>
+    </p>
   </div>
 </template>
 
 <style scoped>
+.currency-field {
+  width: 100%;
+}
+
 .currency-input-wrap {
   display: flex;
   align-items: center;
@@ -127,5 +201,12 @@ onMounted(() => {
   background: transparent;
   min-width: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.currency-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
 }
 </style>

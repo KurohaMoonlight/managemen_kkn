@@ -44,15 +44,16 @@ const handleFileSelect = (e) => {
 };
 
 const submitPengajuan = async () => {
-  if (!form.value.kategori_id || !form.value.nominal || !form.value.keterangan) {
-    toastWarning('Mohon isi Kategori, Nominal, dan Keterangan.');
+  const nominal = toCurrencyNumber(form.value.nominal);
+  if (!form.value.kategori_id || !nominal || nominal <= 0 || !form.value.keterangan?.trim()) {
+    toastWarning('Mohon isi Kategori, Nominal (> 0), dan Keterangan.');
     return;
   }
   isSubmitting.value = true;
   
   const formData = new FormData();
   formData.append('kategori_id', form.value.kategori_id);
-  formData.append('nominal', toCurrencyNumber(form.value.nominal));
+  formData.append('nominal', nominal);
   formData.append('keterangan', form.value.keterangan);
   if (fileNota.value) {
     formData.append('nota', fileNota.value);
@@ -171,8 +172,8 @@ onMounted(() => {
             <td style="padding: 1rem; font-size: 0.9rem;">{{ p.keterangan }}</td>
             <td style="padding: 1rem; color: #ef4444; font-weight: 600;">{{ formatRupiah(p.nominal) }}</td>
             <td style="padding: 1rem; text-align: center;">
-              <a v-if="p.file_nota_url && p.file_nota_url.match(/\.(jpg|jpeg|png|gif)$/i)" href="#" @click.prevent="previewImageUrl = 'http://localhost:5000' + p.file_nota_url" style="font-size: 1.2rem; text-decoration: none;" title="Lihat Nota">🖼️</a>
-              <a v-else-if="p.file_nota_url" :href="'http://localhost:5000' + p.file_nota_url" target="_blank" style="font-size: 1.2rem; text-decoration: none;" title="Unduh Nota">📄</a>
+              <a v-if="p.file_nota_url && p.file_nota_url.match(/\.(jpg|jpeg|png|gif|webp)$/i)" href="#" @click.prevent="previewImageUrl = p.file_nota_url" style="font-size: 1.2rem; text-decoration: none;" title="Lihat Nota">🖼️</a>
+              <a v-else-if="p.file_nota_url" :href="p.file_nota_url" target="_blank" style="font-size: 1.2rem; text-decoration: none;" title="Unduh Nota">📄</a>
               <span v-else class="text-muted">-</span>
             </td>
             <td style="padding: 1rem;">
@@ -192,7 +193,7 @@ onMounted(() => {
   <!-- IMAGE PREVIEW MODAL -->
   <div v-if="previewImageUrl" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 10000;" @click.self="previewImageUrl = null">
     <div style="position: relative; max-width: 90vw; max-height: 90vh;">
-      <button @click="previewImageUrl = null" style="position: absolute; top: -15px; right: -15px; background: white; color: black; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-weight: bold; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">?</button>
+      <button @click="previewImageUrl = null" style="position: absolute; top: -15px; right: -15px; background: white; color: black; border: none; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; font-weight: bold; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">×</button>
       <img :src="previewImageUrl" style="max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.5); object-fit: contain;" @click.stop />
     </div>
   </div>
