@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, onMounted, nextTick } from 'vue';
 import { formatCurrencyInput, parseCurrencyInput } from '../composables/useCurrencyInput.js';
 
 const props = defineProps({
@@ -9,64 +9,52 @@ const props = defineProps({
   inputClass: { type: String, default: '' },
   inputStyle: { type: [String, Object], default: '' },
   maxDigits: { type: Number, default: 12 },
+  autofocus: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'keydown']);
 
 const inputRef = ref(null);
+const isFocused = ref(false);
+const displayValue = ref('');
 
-const getDigits = () => {
-  const raw = parseCurrencyInput(props.modelValue);
-  if (!raw || raw === '0') return '';
-  return raw;
+const normalizeDigits = (val) => {
+  const digits = parseCurrencyInput(val);
+  if (!digits) return '';
+  const trimmed = digits.replace(/^0+/, '');
+  return trimmed.slice(0, props.maxDigits);
 };
 
-const displayValue = ref(formatCurrencyInput(getDigits()));
+const syncDisplay = () => {
+  const digits = normalizeDigits(props.modelValue);
+  displayValue.value = isFocused.value ? digits : formatCurrencyInput(digits);
+};
 
-watch(() => props.modelValue, (val) => {
-  const digits = parseCurrencyInput(val);
-  const normalized = !digits || digits === '0' ? '' : digits;
-  displayValue.value = formatCurrencyInput(normalized);
-});
+watch(() => props.modelValue, syncDisplay, { immediate: true });
+
+const onFocus = () => {
+  isFocused.value = true;
+  displayValue.value = normalizeDigits(props.modelValue);
+};
 
 const onInput = (e) => {
-  const el = e.target;
-  const cursorPos = el.selectionStart ?? 0;
-  const oldValue = el.value;
-  const oldLen = oldValue.length;
-
-  let digits = parseCurrencyInput(el.value);
-  if (digits.length > props.maxDigits) {
-    digits = digits.slice(0, props.maxDigits);
-  }
-
-  const formatted = formatCurrencyInput(digits);
-  displayValue.value = formatted;
+  const digits = normalizeDigits(e.target.value);
+  displayValue.value = digits;
   emit('update:modelValue', digits);
-
-  nextTick(() => {
-    if (!inputRef.value) return;
-    // Hitung posisi kursor setelah reformat (tambah/kurang titik pemisah ribuan)
-    const digitsBeforeCursor = parseCurrencyInput(oldValue.slice(0, cursorPos)).length;
-    let newPos = 0;
-    let digitCount = 0;
-    for (let i = 0; i < formatted.length; i++) {
-      if (formatted[i] !== '.') digitCount++;
-      if (digitCount >= digitsBeforeCursor) {
-        newPos = i + 1;
-        break;
-      }
-    }
-    if (digitsBeforeCursor === 0) newPos = 0;
-    if (digitsBeforeCursor >= digits.length) newPos = formatted.length;
-    inputRef.value.setSelectionRange(newPos, newPos);
-  });
 };
 
 const onBlur = () => {
-  const digits = parseCurrencyInput(props.modelValue);
+  isFocused.value = false;
+  const digits = normalizeDigits(displayValue.value);
   displayValue.value = formatCurrencyInput(digits);
+  emit('update:modelValue', digits);
 };
+
+onMounted(() => {
+  if (props.autofocus) {
+    nextTick(() => inputRef.value?.focus());
+  }
+});
 </script>
 
 <template>
@@ -83,8 +71,10 @@ const onBlur = () => {
       :placeholder="placeholder"
       :required="required && !modelValue"
       autocomplete="off"
+      @focus="onFocus"
       @input="onInput"
       @blur="onBlur"
+      @keydown="$emit('keydown', $event)"
     />
   </div>
 </template>
@@ -124,5 +114,6 @@ const onBlur = () => {
   font-size: 0.95rem;
   background: transparent;
   min-width: 0;
+  font-variant-numeric: tabular-nums;
 }
 </style>
