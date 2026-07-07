@@ -59,17 +59,12 @@ onMounted(() => {
 <template>
   <!-- NEW SECTION: PIC & PROKER -->
   <div class="pic-section-grid" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 2rem; margin-top: 2rem;">
-    <!-- Left: Form -->
     <div class="card card-shadow pic-form-card" style="border: 1px solid var(--color-border);">
-      <div class="card-header" :style="editingPic ? 'background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; justify-content: space-between; align-items: center;' : 'display: flex; justify-content: space-between; align-items: center;'">
-        <h3 style="margin:0;">{{ editingPic ? '✏️ Edit Kelompok PIC' : '📝 Buat Kelompok PIC' }}</h3>
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin:0;">📝 Buat Kelompok PIC</h3>
         <button type="button" @click.prevent.stop="openGlobalMinMaxSettings" title="Pengaturan Global (Posko)" style="position: relative; z-index: 50; pointer-events: auto; background: transparent; border: none; cursor: pointer; font-size: 1.3rem; padding: 0.25rem; color: inherit; transition: transform 0.2s;" onmouseover="this.style.transform='rotate(45deg)'" onmouseout="this.style.transform='none'">⚙️</button>
       </div>
       <div class="card-body">
-        <!-- Edit mode info banner -->
-        <div v-if="editingPic" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #1e40af;">
-          ✏️ Mode Edit: <strong>{{ editingPic.nama_pic }}</strong>. Mahasiswa yang sudah bergabung PIC lain tidak dapat dipilih.
-        </div>
         <form @submit.prevent="submitPicForm">
           <div class="form-group">
             <label>Nama PIC (Divisi/Kelompok)</label>
@@ -96,11 +91,8 @@ onMounted(() => {
           </div>
           <div v-if="picError" class="error-msg" style="margin-bottom: 1rem;">{{ picError }}</div>
           <div style="display: flex; gap: 0.5rem;">
-            <button v-if="editingPic" type="button" class="btn btn-outline" style="flex: 1; justify-content:center;" @click="resetPicForm">
-              ✕ Batal
-            </button>
             <button type="submit" class="btn btn-primary" style="flex: 2; justify-content:center;" :disabled="isSubmittingPic">
-              {{ isSubmittingPic ? 'Menyimpan...' : (editingPic ? '💾 Simpan Perubahan' : 'Simpan & Buat Folder') }}
+              {{ isSubmittingPic ? 'Menyimpan...' : 'Simpan & Buat Folder' }}
             </button>
           </div>
         </form>
@@ -153,6 +145,48 @@ onMounted(() => {
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Edit PIC Modal -->
+  <div v-if="editingPic" class="modal-overlay" @click.self="resetPicForm">
+    <div class="modal-content" style="padding: 1.5rem; width: 400px; max-width: 90%;">
+      <h3 style="margin-top: 0; color: var(--text-main);">✏️ Edit Kelompok PIC</h3>
+      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: #1e40af;">
+        Mengedit: <strong>{{ editingPic.nama_pic }}</strong>. Mahasiswa yang sudah bergabung PIC lain tidak dapat dipilih.
+      </div>
+      <form @submit.prevent="submitPicForm">
+        <div class="form-group">
+          <label>Nama PIC (Divisi/Kelompok)</label>
+          <input type="text" v-model="picForm.nama_pic" class="form-input" placeholder="Contoh: Divisi Acara" required style="width: 100%; box-sizing: border-box;" />
+        </div>
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Program Kerja (Proker)</label>
+          <input type="text" v-model="picForm.proker" class="form-input" placeholder="Contoh: Senam Pagi" required style="width: 100%; box-sizing: border-box;" />
+        </div>
+        <div class="form-group" style="margin-top: 1rem;">
+          <label>Pilih Mahasiswa (Minimal {{ poskoMinAnggota }} Anggota)</label>
+          <div class="checkbox-group" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--color-border); padding: 0.8rem; border-radius: 8px; background: var(--bg-main);">
+            <div v-if="mahasiswaList.length === 0" class="text-muted" style="font-size: 0.85rem; padding: 0.5rem 0;">
+              Semua mahasiswa sudah terdaftar di PIC lain.
+            </div>
+            <label v-for="mhs in mahasiswaList" :key="mhs.id" style="display: flex; align-items: center; margin-bottom: 0.5rem; cursor: pointer; font-size: 0.9rem;">
+              <input type="checkbox" :value="mhs.id" v-model="picForm.selectedMahasiswa"
+                :disabled="picForm.selectedMahasiswa.length >= 4 && !picForm.selectedMahasiswa.includes(mhs.id)"
+                style="margin-right: 8px; width: 16px; height: 16px; cursor: inherit;" />
+              {{ mhs.nama_lengkap }} <span class="text-muted" style="margin-left:4px;">({{ mhs.nim }})</span>
+            </label>
+          </div>
+          <small class="text-muted">Terpilih: <b>{{ picForm.selectedMahasiswa.length }}</b> mahasiswa</small>
+        </div>
+        <div v-if="picError" class="error-msg" style="margin-bottom: 1rem;">{{ picError }}</div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem; justify-content: flex-end;">
+          <button type="button" class="btn btn-outline" style="padding: 0.5rem 1rem;" @click="resetPicForm">Batal</button>
+          <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1rem;" :disabled="isSubmittingPic">
+            {{ isSubmittingPic ? 'Menyimpan...' : '💾 Simpan Perubahan' }}
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

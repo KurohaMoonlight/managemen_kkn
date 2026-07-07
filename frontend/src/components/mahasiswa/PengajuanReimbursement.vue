@@ -25,6 +25,16 @@ const formatRupiah = (angka) => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
 };
 
+const formatCurrencyInput = (val) => {
+  if (!val) return '';
+  return Number(val).toLocaleString('id-ID');
+};
+
+const parseCurrencyInput = (val) => {
+  if (!val) return '';
+  return val.replace(/\D/g, '');
+};
+
 const fetchData = async () => {
   try {
     const [resKategori, resPengajuan] = await Promise.all([
@@ -117,7 +127,7 @@ onMounted(() => {
         </div>
         <div>
           <label class="form-label">Nominal (Rp)</label>
-          <input type="number" v-model="form.nominal" class="form-input" placeholder="Contoh: 150000" />
+          <input type="text" :value="formatCurrencyInput(form.nominal)" @input="form.nominal = parseCurrencyInput($event.target.value)" class="form-input" placeholder="Contoh: 150.000" />
         </div>
       </div>
       <div style="margin-bottom: 1rem;">

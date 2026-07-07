@@ -373,6 +373,7 @@ const initializeDb = async () => {
     try { await pool.query('ALTER TABLE posko ADD COLUMN alamat_lengkap TEXT DEFAULT NULL'); } catch(e) { /* already exists */ }
     try { await pool.query('ALTER TABLE posko ADD COLUMN default_min_anggota INT DEFAULT 2'); } catch(e) { /* already exists */ }
     try { await pool.query('ALTER TABLE posko ADD COLUMN default_max_anggota INT DEFAULT NULL'); } catch(e) { /* already exists */ }
+    try { await pool.query('ALTER TABLE posko ADD COLUMN iuran_interval VARCHAR(20) DEFAULT "sekali"'); } catch(e) { /* already exists */ }
 
     // Migration: pic_groups min/max anggota
     try { await pool.query('ALTER TABLE pic_groups ADD COLUMN min_anggota INT DEFAULT NULL'); } catch(e) { /* already exists */ }
@@ -2297,7 +2298,7 @@ app.get('/api/bendahara/transaksi', authenticateToken, async (req, res) => {
 
 app.post('/api/bendahara/transaksi', authenticateToken, upload.single('nota'), compressImages, async (req, res) => {
   if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
-  const { kategori_id, jenis, nominal, tanggal, keterangan } = req.body;
+  const { kategori_id, jenis, nominal, tanggal, keterangan, nama_kategori_manual } = req.body;
   const file = req.file;
 
   if (!jenis || !nominal || !tanggal || !keterangan) {
@@ -2335,9 +2336,20 @@ app.post('/api/bendahara/transaksi', authenticateToken, upload.single('nota'), c
       fileId = fRes3.insertId;
     }
 
+    let final_kategori_id = kategori_id || null;
+    if (!final_kategori_id && nama_kategori_manual) {
+      const [exist] = await pool.query('SELECT id FROM keuangan_kategori WHERE nama_kategori = ? AND posko_id = ?', [nama_kategori_manual, req.user.posko_id]);
+      if (exist.length > 0) {
+        final_kategori_id = exist[0].id;
+      } else {
+        const [ins] = await pool.query('INSERT INTO keuangan_kategori (posko_id, nama_kategori, plafon_dana) VALUES (?, ?, 0)', [req.user.posko_id, nama_kategori_manual]);
+        final_kategori_id = ins.insertId;
+      }
+    }
+
     await pool.query(
       'INSERT INTO keuangan_transaksi (posko_id, kategori_id, jenis, nominal, tanggal, keterangan, file_nota_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [req.user.posko_id, kategori_id || null, jenis, nominal, tanggal, keterangan, fileId, req.user.id]
+      [req.user.posko_id, final_kategori_id, jenis, nominal, tanggal, keterangan, fileId, req.user.id]
     );
 
     res.json({ success: true, message: 'Transaksi berhasil dicatat.' });
@@ -2405,6 +2417,9 @@ app.get('/api/bendahara/summary', authenticateToken, async (req, res) => {
 // ─── FITUR IURAN ANGGOTA ────────────────────────────────────────────────────────
 app.get('/api/bendahara/iuran', authenticateToken, async (req, res) => {
   try {
+    const [poskoRows] = await pool.query('SELECT iuran_interval FROM posko WHERE id = ?', [req.user.posko_id]);
+    const iuran_interval = poskoRows[0]?.iuran_interval || 'sekali';
+
     const [rows] = await pool.query(`
       SELECT u.id as user_id, u.nim, u.nama_lengkap, u.jabatan,
              COALESCE(i.nominal_target, 0) as nominal_target,
@@ -2415,7 +2430,7 @@ app.get('/api/bendahara/iuran', authenticateToken, async (req, res) => {
       WHERE u.posko_id = ? AND u.role != 'superadmin'
       ORDER BY u.nama_lengkap ASC
     `, [req.user.posko_id, req.user.posko_id]);
-    res.json(rows);
+    res.json({ list: rows, iuran_interval });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil data iuran.' });
   }
@@ -2424,7 +2439,13 @@ app.get('/api/bendahara/iuran', authenticateToken, async (req, res) => {
 app.post('/api/bendahara/iuran/target', authenticateToken, async (req, res) => {
   if (req.user.jabatan !== 'Bendahara' && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
   try {
-    const { nominal_target } = req.body;
+    const { nominal_target, iuran_interval } = req.body;
+    
+    // Simpan iuran_interval ke tabel posko
+    if (iuran_interval) {
+      await pool.query('UPDATE posko SET iuran_interval = ? WHERE id = ?', [iuran_interval, req.user.posko_id]);
+    }
+
     const [users] = await pool.query('SELECT id FROM users WHERE posko_id = ? AND role != "superadmin"', [req.user.posko_id]);
     
     for (const u of users) {
@@ -2462,10 +2483,20 @@ app.post('/api/bendahara/iuran/bayar', authenticateToken, async (req, res) => {
     const [uRows] = await pool.query('SELECT nama_lengkap FROM users WHERE id = ?', [user_id]);
     const nama = uRows[0]?.nama_lengkap || 'Anggota';
     
+    // Find or create 'Iuran Anggota' category
+    let iuranKatId = null;
+    const [existKat] = await pool.query('SELECT id FROM keuangan_kategori WHERE nama_kategori = ? AND posko_id = ?', ['Iuran Anggota', req.user.posko_id]);
+    if (existKat.length > 0) {
+      iuranKatId = existKat[0].id;
+    } else {
+      const [insKat] = await pool.query('INSERT INTO keuangan_kategori (posko_id, nama_kategori, plafon_dana) VALUES (?, ?, 0)', [req.user.posko_id, 'Iuran Anggota']);
+      iuranKatId = insKat.insertId;
+    }
+
     await pool.query(`
-      INSERT INTO keuangan_transaksi (posko_id, jenis, nominal, tanggal, keterangan, user_id)
-      VALUES (?, 'pemasukan', ?, CURDATE(), ?, ?)
-    `, [req.user.posko_id, nominal_bayar, `Iuran anggota: ${nama}`, req.user.id]);
+      INSERT INTO keuangan_transaksi (posko_id, kategori_id, jenis, nominal, tanggal, keterangan, user_id)
+      VALUES (?, ?, 'pemasukan', ?, CURDATE(), ?, ?)
+    `, [req.user.posko_id, iuranKatId, nominal_bayar, `${nama} membayar ${nominal_bayar} dari ${target}`, req.user.id]);
     
     res.json({ success: true, message: 'Pembayaran berhasil dicatat.' });
   } catch (error) {
@@ -2913,6 +2944,32 @@ app.post('/api/admin/buku-tamu', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Buku Tamu Create Error:', error);
     res.status(500).json({ message: 'Gagal menyimpan buku tamu' });
+  }
+});
+
+// Edit entri buku tamu
+app.put('/api/admin/buku-tamu/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { posko_id } = req.user;
+  const { tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id } = req.body;
+
+  if (!tanggal || !nama_tamu || !alamat_jabatan || !keperluan) {
+    return res.status(400).json({ message: 'Lengkapi semua field wajib.' });
+  }
+
+  try {
+    const [existing] = await pool.query('SELECT * FROM buku_tamu WHERE id = ? AND posko_id = ?', [id, posko_id]);
+    if (existing.length === 0) return res.status(404).json({ message: 'Data tidak ditemukan' });
+
+    await pool.query(
+      'UPDATE buku_tamu SET tanggal = ?, nama_tamu = ?, alamat_jabatan = ?, keperluan = ?, mhs_penyambut_id = ? WHERE id = ?',
+      [tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id || null, id]
+    );
+
+    res.json({ message: 'Buku Tamu berhasil diubah' });
+  } catch (error) {
+    console.error('Buku Tamu Update Error:', error);
+    res.status(500).json({ message: 'Gagal mengubah buku tamu' });
   }
 });
 

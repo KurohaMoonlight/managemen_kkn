@@ -66,6 +66,8 @@ provide('onRefreshExplorer', refreshExplorer);
             nama_desa: poskoData?.desa,
             kecamatan: '....',
             kabupaten: '....',
+            lat: poskoData?.lat,
+            lng: poskoData?.lng
           }"
         />
 

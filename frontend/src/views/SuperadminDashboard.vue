@@ -340,7 +340,7 @@ const userList = ref([]);
 const userLoading = ref(false);
 const showUserModal = ref(false);
 const editingUser = ref(null);
-const userForm = ref({ nim: '', nama_lengkap: '', role: 'mahasiswa', jabatan: '', posko_id: '', password: '' });
+const userForm = ref({ nim: '', nama_lengkap: '', role: 'mahasiswa', jabatan: '', posko_id: '', password: '', password_confirm: '' });
 const userSaving = ref(false);
 const userError = ref('');
 const userSearchQuery = ref('');
@@ -376,11 +376,12 @@ const openUserModal = (user = null) => {
       role: user.role,
       jabatan: user.jabatan || '',
       posko_id: user.posko_id || '',
-      password: ''
+      password: '',
+      password_confirm: ''
     };
   } else {
     editingUser.value = null;
-    userForm.value = { nim: '', nama_lengkap: '', role: 'admin', jabatan: 'Kordes', posko_id: poskoList.value[0]?.id || '', password: '' };
+    userForm.value = { nim: '', nama_lengkap: '', role: 'admin', jabatan: 'Kordes', posko_id: poskoList.value[0]?.id || '', password: '', password_confirm: '' };
   }
   showUserModal.value = true;
 };
@@ -388,6 +389,7 @@ const openUserModal = (user = null) => {
 const saveUser = async () => {
   if (!userForm.value.nim || !userForm.value.nama_lengkap) { userError.value = 'NIM dan Nama wajib diisi.'; return; }
   if (!userForm.value.posko_id) { userError.value = 'Posko wajib dipilih.'; return; }
+  if (userForm.value.password && userForm.value.password !== userForm.value.password_confirm) { userError.value = 'Konfirmasi password tidak cocok.'; return; }
   userSaving.value = true; userError.value = '';
   try {
     const url = editingUser.value ? `/api/superadmin/users/${editingUser.value.id}` : '/api/superadmin/users';
@@ -921,6 +923,10 @@ const formatTime = (t) => t ? t.substring(0, 5) : '-';
             <div class="sa-form-group full-width">
               <label>Password {{ editingUser ? '(kosongkan jika tidak diubah)' : '' }}</label>
               <input type="password" class="sa-input" v-model="userForm.password" :placeholder="editingUser ? 'Kosongkan jika tidak diubah' : 'Default: NIM pengguna'" />
+            </div>
+            <div class="sa-form-group full-width" v-if="userForm.password && userForm.password.length > 0">
+              <label>Konfirmasi Password <span class="required">*</span></label>
+              <input type="password" class="sa-input" v-model="userForm.password_confirm" placeholder="Ulangi password baru" />
             </div>
           </div>
           <div v-if="!editingUser" class="sa-alert sa-alert-info" style="margin-top:1rem">

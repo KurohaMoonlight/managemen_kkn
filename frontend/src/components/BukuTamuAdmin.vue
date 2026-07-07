@@ -14,11 +14,52 @@ const tamuList = ref([]);
 const showForm = ref(false);
 const isSubmitting = ref(false);
 const showPrintSettings = ref(false);
+const printConfigMode = ref('otomatis');
+const isLoadingLocation = ref(false);
 const printConfig = ref({
   desa: props.poskoData?.nama_desa || '',
   kecamatan: props.poskoData?.kecamatan || '',
   kabupaten: props.poskoData?.kabupaten || ''
 });
+
+const loadLocationFromMap = async () => {
+  if (printConfigMode.value === 'otomatis') {
+    if (!props.poskoData?.lat || !props.poskoData?.lng || props.poskoData.lat == 0 || props.poskoData.lng == 0) {
+      toastError("Koordinat posko belum diatur. Silakan gunakan mode manual.");
+      printConfigMode.value = 'manual';
+      return;
+    }
+
+    isLoadingLocation.value = true;
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${props.poskoData.lat}&lon=${props.poskoData.lng}&zoom=14&addressdetails=1`, {
+        headers: {
+          'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.address) {
+          printConfig.value.desa = data.address.village || data.address.town || data.address.suburb || data.address.hamlet || '';
+          printConfig.value.kecamatan = data.address.city_district || data.address.district || data.address.county || data.address.municipality || '';
+          let kab = data.address.city || data.address.county || data.address.state_district || data.address.region || '';
+          printConfig.value.kabupaten = kab.replace('Kabupaten ', '').replace('Kota ', '');
+        } else {
+          toastError("Alamat tidak ditemukan dari koordinat ini. Silakan gunakan mode manual.");
+          printConfigMode.value = 'manual';
+        }
+      } else {
+        throw new Error('API Error');
+      }
+    } catch(e) {
+       console.error("Gagal mengambil lokasi dari map", e);
+       toastError("Gagal mengambil lokasi otomatis, silakan gunakan mode manual.");
+       printConfigMode.value = 'manual';
+    } finally {
+      isLoadingLocation.value = false;
+    }
+  }
+};
 
 const chunkedTamuList = computed(() => {
   if (tamuList.value.length === 0) return [[]];
@@ -36,6 +77,8 @@ const form = ref({
   keperluan: '',
   mhs_penyambut_id: ''
 });
+
+const editingId = ref(null);
 
 // Canvas Signature Refs
 const sigCanvas = ref(null);
@@ -107,6 +150,7 @@ const clearSignature = () => {
 
 const closeForm = () => {
   showForm.value = false;
+  editingId.value = null;
   form.value = {
     tanggal: new Date().toISOString().split('T')[0],
     nama_tamu: '',
@@ -116,36 +160,55 @@ const closeForm = () => {
   };
 };
 
+const editTamu = (t) => {
+  editingId.value = t.id;
+  form.value = {
+    tanggal: new Date(t.tanggal).toISOString().split('T')[0],
+    nama_tamu: t.nama_tamu,
+    alamat_jabatan: t.alamat_jabatan,
+    keperluan: t.keperluan,
+    mhs_penyambut_id: t.mhs_penyambut_id || ''
+  };
+  showForm.value = true;
+};
+
 const submitForm = async () => {
   if (!form.value.tanggal || !form.value.nama_tamu || !form.value.alamat_jabatan || !form.value.keperluan) {
     toastError("Mohon lengkapi semua kolom wajib (Kecuali mahasiswa menemui yang opsional).");
     return;
   }
   
-  // Check if canvas is empty
-  const blank = document.createElement('canvas');
-  blank.width = sigCanvas.value.width;
-  blank.height = sigCanvas.value.height;
-  if (sigCanvas.value.toDataURL() === blank.toDataURL()) {
-    toastError("Tamu diwajibkan memberikan tanda tangan di kanvas yang disediakan.");
-    return;
+  let signature_base64 = null;
+  if (!editingId.value) {
+    // Check if canvas is empty
+    const blank = document.createElement('canvas');
+    blank.width = sigCanvas.value.width;
+    blank.height = sigCanvas.value.height;
+    if (sigCanvas.value.toDataURL() === blank.toDataURL()) {
+      toastError("Tamu diwajibkan memberikan tanda tangan di kanvas yang disediakan.");
+      return;
+    }
+    signature_base64 = sigCanvas.value.toDataURL('image/png');
   }
 
-  const signature_base64 = sigCanvas.value.toDataURL('image/png');
   isSubmitting.value = true;
 
   try {
-    const res = await fetch('/api/admin/buku-tamu', {
-      method: 'POST',
+    const url = editingId.value ? `/api/admin/buku-tamu/${editingId.value}` : '/api/admin/buku-tamu';
+    const method = editingId.value ? 'PUT' : 'POST';
+    const bodyData = editingId.value ? { ...form.value } : { ...form.value, signature_base64 };
+
+    const res = await fetch(url, {
+      method: method,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${props.token}`
       },
-      body: JSON.stringify({ ...form.value, signature_base64 })
+      body: JSON.stringify(bodyData)
     });
     
     if (res.ok) {
-      toastSuccess("Buku Tamu berhasil disimpan!");
+      toastSuccess(`Buku Tamu berhasil ${editingId.value ? 'diubah' : 'disimpan'}!`);
       closeForm();
       fetchTamu();
     } else {
@@ -171,6 +234,9 @@ const formatDateWithDay = (dateStr) => {
 };
 
 const cetakPdf = () => {
+  if (printConfigMode.value === 'otomatis') {
+    loadLocationFromMap();
+  }
   showPrintSettings.value = true;
 };
 
@@ -220,8 +286,8 @@ watch(showForm, async (newVal) => {
         <p style="margin: 0; color: var(--text-muted); font-size: 0.95rem;">Catat riwayat kunjungan tamu di Posko (Dosen Pembimbing, Pejabat Desa, dsb).</p>
       </div>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <button class="btn btn-outline" style="background-color: #e2e8f0; border-color: #cbd5e1; color: #0f172a; flex: 1; min-width: 140px;" @click="showPrintSettings = true">🖨️ Cetak PDF</button>
-        <button class="btn btn-primary" style="flex: 1; min-width: 140px;" @click="showForm = true">➕ Tambah Tamu</button>
+        <button class="btn btn-outline" style="background-color: #e2e8f0; border-color: #cbd5e1; color: #0f172a; flex: 1; min-width: 140px;" @click="cetakPdf">🖨️ Cetak PDF</button>
+        <button class="btn btn-primary" style="flex: 1; min-width: 140px;" @click="() => { editingId = null; showForm = true; }">➕ Tambah Tamu</button>
       </div>
     </div>
     
@@ -237,11 +303,12 @@ watch(showForm, async (newVal) => {
             <th style="padding: 1rem;">Keperluan</th>
             <th style="padding: 1rem;">Mhs Menemui</th>
             <th style="padding: 1rem; text-align: center;">TTD</th>
+            <th style="padding: 1rem; text-align: center;">Aksi</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="tamuList.length === 0">
-            <td colspan="7" class="text-center text-muted" style="padding: 2rem;">Belum ada histori tamu.</td>
+            <td colspan="8" class="text-center text-muted" style="padding: 2rem;">Belum ada histori tamu.</td>
           </tr>
           <tr v-for="(t, index) in tamuList" :key="t.id" style="border-bottom: 1px solid #f1f5f9;">
             <td style="padding: 1rem;">{{ index + 1 }}</td>
@@ -252,6 +319,9 @@ watch(showForm, async (newVal) => {
             <td style="padding: 1rem; color: var(--color-primary);">{{ t.nama_penyambut || '-' }}</td>
             <td style="padding: 1rem; text-align: center;">
               <img v-if="t.ttd_tamu_url" :src="'http://localhost:5000' + t.ttd_tamu_url" style="height: 40px; max-width: 80px; object-fit: contain;" />
+            </td>
+            <td style="padding: 1rem; text-align: center;">
+              <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" @click="editTamu(t)">✏️ Edit</button>
             </td>
           </tr>
         </tbody>
@@ -264,18 +334,33 @@ watch(showForm, async (newVal) => {
         <div class="modal-content animate-fade-in" style="background: white; border-radius: 12px; padding: 2rem; width: 100%; max-width: 450px; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
           <h3 style="margin-top: 0; color: var(--color-primary); border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; margin-bottom: 1.5rem;">Konfigurasi Cetak PDF</h3>
           
+          <div style="margin-bottom: 1.5rem;">
+            <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Sumber Lokasi</label>
+            <div style="display: flex; gap: 1rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" v-model="printConfigMode" value="otomatis" @change="loadLocationFromMap" /> Otomatis (Map)
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio" v-model="printConfigMode" value="manual" /> Manual
+              </label>
+            </div>
+            <div v-if="printConfigMode === 'otomatis' && isLoadingLocation" style="font-size: 0.8rem; color: var(--color-primary); margin-top: 0.5rem;">
+              ⏳ Mengambil lokasi dari map...
+            </div>
+          </div>
+
           <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
             <div>
               <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Desa</label>
-              <input type="text" v-model="printConfig.desa" placeholder="Contoh: Suka Maju" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px;" />
+              <input type="text" v-model="printConfig.desa" placeholder="Contoh: Suka Maju" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px;" :disabled="printConfigMode === 'otomatis'" />
             </div>
             <div>
               <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Kecamatan</label>
-              <input type="text" v-model="printConfig.kecamatan" placeholder="Contoh: Cikande" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px;" />
+              <input type="text" v-model="printConfig.kecamatan" placeholder="Contoh: Cikande" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px;" :disabled="printConfigMode === 'otomatis'" />
             </div>
             <div>
               <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Kabupaten / Kota</label>
-              <input type="text" v-model="printConfig.kabupaten" placeholder="Contoh: Serang" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px;" />
+              <input type="text" v-model="printConfig.kabupaten" placeholder="Contoh: Serang" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px;" :disabled="printConfigMode === 'otomatis'" />
             </div>
           </div>
           
@@ -291,7 +376,9 @@ watch(showForm, async (newVal) => {
     <Teleport to="body">
       <div v-if="showForm" class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: block; z-index: 9999; overflow-y: auto; padding: 4rem 1rem;" @click.self="closeForm">
         <div class="modal-content animate-fade-in" style="background: white; border-radius: 12px; padding: 2.5rem; width: 100%; max-width: 900px; margin: 0 auto; flex-shrink: 0; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
-          <h3 style="margin-top: 0; color: var(--color-primary); border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem; margin-bottom: 2rem; font-size: 1.5rem;">Form Tambah Data Tamu</h3>
+          <h3 style="margin-top: 0; color: var(--color-primary); border-bottom: 1px solid #e2e8f0; padding-bottom: 1rem; margin-bottom: 2rem; font-size: 1.5rem;">
+            {{ editingId ? 'Form Edit Data Tamu' : 'Form Tambah Data Tamu' }}
+          </h3>
           
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
             <!-- Left Column -->
@@ -308,14 +395,18 @@ watch(showForm, async (newVal) => {
                 <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Alamat / Jabatan Instansi</label>
                 <input type="text" v-model="form.alamat_jabatan" placeholder="Contoh: Kepala Desa Suka Maju" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;" />
               </div>
+            </div>
+            <!-- Right Column -->
+            <div style="display: flex; flex-direction: column; gap: 1.25rem;">
               <div>
-                <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Mhs. Yang Menemui (Penyambut)</label>
-                <select v-model="form.mhs_penyambut_id" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
-                  <option value="">- Kosongkan jika tidak ada spesifik -</option>
-                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.nama_lengkap }} ({{ u.jabatan }})</option>
+                <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Mahasiswa yang Menemui (Opsional)</label>
+                <select v-model="form.mhs_penyambut_id" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; background: white;">
+                  <option value="">-- Tidak Spesifik / Semua --</option>
+                  <option v-for="u in props.users" :key="u.id" :value="u.id">{{ u.nama_lengkap }}</option>
                 </select>
               </div>
-              <div>
+              
+              <div v-if="!editingId">
                 <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Keperluan / Tujuan</label>
                 <textarea v-model="form.keperluan" rows="3" placeholder="Tujuan kedatangan..." style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical; box-sizing: border-box;"></textarea>
               </div>
@@ -332,16 +423,17 @@ watch(showForm, async (newVal) => {
                   @touchstart.prevent="startDrawingTouch" @touchmove.prevent="drawTouch" @touchend.prevent="stopDrawing">
                 </canvas>
               </div>
-              <div style="display: flex; justify-content: flex-end; margin-top: 0.75rem;">
-                <button @click="clearSignature" class="btn btn-outline" style="padding: 0.5rem 1rem; font-size: 0.9rem;">🗑️ Hapus Coretan</button>
-              </div>
+                  <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Tanda tangan di dalam kotak</span>
+                    <button @click="clearSignature" class="btn btn-outline" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; height: auto;">Bersihkan</button>
+                  </div>
             </div>
           </div>
           
-          <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem; border-top: 1px solid #e2e8f0; padding-top: 1.5rem;">
+          <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0;">
             <button @click="closeForm" class="btn btn-outline" style="min-width: 100px;">Batal</button>
             <button @click="submitForm" class="btn btn-primary" :disabled="isSubmitting" style="min-width: 150px;">
-              {{ isSubmitting ? 'Menyimpan...' : 'Simpan Buku Tamu' }}
+              {{ isSubmitting ? 'Menyimpan...' : (editingId ? 'Simpan Perubahan' : 'Simpan Buku Tamu') }}
             </button>
           </div>
         </div>

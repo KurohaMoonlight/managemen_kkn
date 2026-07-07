@@ -23,13 +23,54 @@ const iuranList = ref([]);
 const iuranTarget = ref(0);
 const isSettingTarget = ref(false);
 const pengajuanList = ref([]);
+const iuranInterval = ref('sekali');
+const toastList = ref([]);
+const showToast = (message, type = 'info') => {
+  const id = Date.now();
+  toastList.value.push({ id, message, type });
+  setTimeout(() => {
+    toastList.value = toastList.value.filter(t => t.id !== id);
+  }, 3500);
+};
+
+const confirmDialog = ref({ show: false, message: '', onConfirm: null, onCancel: null });
+const showConfirm = (message) => {
+  return new Promise((resolve) => {
+    confirmDialog.value = {
+      show: true, message,
+      onConfirm: () => { confirmDialog.value.show = false; resolve(true); },
+      onCancel: () => { confirmDialog.value.show = false; resolve(false); }
+    };
+  });
+};
+
+const promptDialog = ref({ show: false, message: '', value: '', type: 'text', onConfirm: null, onCancel: null });
+const showPrompt = (message, defaultValue = '', type = 'text') => {
+  return new Promise((resolve) => {
+    promptDialog.value = {
+      show: true, message, value: defaultValue, type,
+      onConfirm: () => { promptDialog.value.show = false; resolve(promptDialog.value.value); },
+      onCancel: () => { promptDialog.value.show = false; resolve(null); }
+    };
+  });
+};
+
+const formatCurrencyInput = (val) => {
+  if (!val) return '';
+  return Number(val).toLocaleString('id-ID');
+};
+const parseCurrencyInput = (val) => {
+  if (!val) return '';
+  return val.toString().replace(/\D/g, '');
+};
+
 
 // Modals & Forms
 const showModalKategori = ref(false);
 const formKategori = ref({ id: null, nama_kategori: '', plafon_dana: 0 });
 
 const showModalTransaksi = ref(false);
-const formTransaksi = ref({ jenis: 'pengeluaran', kategori_id: '', nominal: 0, tanggal: '', keterangan: '', file: null });
+const formTransaksi = ref({ jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: 0, tanggal: '', keterangan: '', file: null });
 const fileNotaPreview = ref(null);
 const fileNotaRef = ref(null);
 
@@ -128,7 +169,7 @@ const submitKategori = async () => {
       body: JSON.stringify(formKategori.value)
     });
     if (res.ok) {
-      alert(formKategori.value.id ? 'Kategori diperbarui.' : 'Kategori ditambahkan.');
+      showToast(formKategori.value.id ? 'Kategori diperbarui.' : 'Kategori ditambahkan.', 'success');
       resetFormKategori();
       fetchKategori();
       fetchSummary();
@@ -138,14 +179,14 @@ const submitKategori = async () => {
   }
 };
 const hapusKategori = async (id) => {
-  if (!confirm('Yakin ingin menghapus kategori/pos ini? Transaksi yang terkait akan kehilangan kategorinya.')) return;
+  if (!(await showConfirm('Yakin ingin menghapus kategori/pos ini? Transaksi yang terkait akan kehilangan kategorinya.'))) return;
   try {
     const res = await fetch(`/api/bendahara/kategori/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token.value}` }
     });
     if (res.ok) {
-      alert('Kategori dihapus.');
+      showToast('Kategori dihapus.', 'success');
       fetchKategori();
       fetchSummary();
     }
@@ -163,7 +204,7 @@ const onFileChange = (e) => {
   }
 };
 const resetFormTransaksi = () => {
-  formTransaksi.value = { jenis: 'pengeluaran', kategori_id: '', nominal: 0, tanggal: '', keterangan: '', file: null };
+  formTransaksi.value = { jenis: 'pengeluaran', kategori_id: '', input_kategori: '', nominal: 0, tanggal: '', keterangan: '', file: null };
   fileNotaPreview.value = null;
   if (fileNotaRef.value) fileNotaRef.value.value = null;
   showModalTransaksi.value = false;
@@ -176,7 +217,7 @@ const submitTransaksi = async () => {
     if (catData) {
       const sisa = Number(catData.plafon_dana) - Number(catData.total_pengeluaran);
       if (nominalInput > sisa) {
-        if (!confirm(`Peringatan: Nominal ini melebihi sisa anggaran RAB!\nSisa anggaran untuk ${catData.nama_kategori} hanya ${formatRupiah(sisa)}.\nTetap lanjutkan menyimpan transaksi ini?`)) {
+        if (!(await showConfirm(`Peringatan: Nominal ini melebihi sisa anggaran RAB!\nSisa anggaran untuk ${catData.nama_kategori} hanya ${formatRupiah(sisa)}.\nTetap lanjutkan menyimpan transaksi ini?`))) {
           return;
         }
       }
@@ -200,7 +241,7 @@ const submitTransaksi = async () => {
       body: formData
     });
     if (res.ok) {
-      alert('Transaksi berhasil dicatat!');
+      showToast('Transaksi berhasil dicatat!', 'success');
       resetFormTransaksi();
       fetchTransaksi();
       fetchSummary();
@@ -210,21 +251,21 @@ const submitTransaksi = async () => {
       }
     } else {
       const data = await res.json();
-      alert(data.message || 'Gagal');
+      showToast(data.message || 'Gagal', 'error');
     }
   } catch (err) {
     console.error(err);
   }
 };
 const hapusTransaksi = async (id) => {
-  if (!confirm('Yakin ingin menghapus transaksi ini?')) return;
+  if (!(await showConfirm('Yakin ingin menghapus transaksi ini?'))) return;
   try {
     const res = await fetch(`/api/bendahara/transaksi/${id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token.value}` }
     });
     if (res.ok) {
-      alert('Transaksi dihapus.');
+      showToast('Transaksi dihapus.', 'success');
       fetchTransaksi();
       fetchSummary();
     }
@@ -320,7 +361,7 @@ const exportPDF = () => {
 
 // --- IURAN METHODS ---
 const saveIuranTarget = async () => {
-  if (!confirm(`Ubah target iuran menjadi ${formatRupiah(iuranTarget.value)} untuk semua anggota?`)) return;
+  if (!(await showConfirm(`Ubah target iuran menjadi ${formatRupiah(iuranTarget.value)} untuk semua anggota?`))) return;
   isSettingTarget.value = true;
   try {
     const res = await fetch('/api/bendahara/iuran/target', {
@@ -329,19 +370,19 @@ const saveIuranTarget = async () => {
       body: JSON.stringify({ nominal_target: iuranTarget.value })
     });
     if (res.ok) {
-      alert("Target iuran berhasil diperbarui!");
+      showToast("Target iuran berhasil diperbarui!", 'success');
       fetchIuran();
-    } else alert("Gagal memperbarui target.");
+    } else showToast("Gagal memperbarui target.", 'error');
   } catch(e) { console.error(e) }
   isSettingTarget.value = false;
 };
 
 const promptBayarIuran = async (userObj) => {
-  const amountStr = prompt(`Catat pembayaran iuran untuk ${userObj.nama_lengkap}:\n\nTarget sisa: ${formatRupiah(userObj.nominal_target - userObj.nominal_terbayar)}\nMasukkan nominal bayar (Angka saja):`);
+  const amountStr = await showPrompt(`Catat pembayaran iuran untuk ${userObj.nama_lengkap}:\n\nTarget sisa: ${formatRupiah(userObj.nominal_target - userObj.nominal_terbayar)}\nMasukkan nominal bayar (Angka saja):`, '', 'number');
   if (!amountStr) return;
   const nominal = Number(amountStr);
   if (isNaN(nominal) || nominal <= 0) {
-    alert("Nominal tidak valid!");
+    showToast("Nominal tidak valid!", 'error');
     return;
   }
   
@@ -352,13 +393,13 @@ const promptBayarIuran = async (userObj) => {
       body: JSON.stringify({ user_id: userObj.user_id, nominal_bayar: nominal })
     });
     if (res.ok) {
-      alert("Pembayaran berhasil dicatat, dan uang otomatis masuk ke Kas Pemasukan!");
+      showToast("Pembayaran berhasil dicatat, dan uang otomatis masuk ke Kas Pemasukan!", 'success');
       fetchIuran();
       fetchTransaksi();
       fetchSummary();
     } else {
       const data = await res.json();
-      alert(data.message || "Gagal mencatat pembayaran.");
+      showToast(data.message || "Gagal mencatat pembayaran.", "error");
     }
   } catch(e) { console.error(e) }
 };
@@ -367,10 +408,10 @@ const promptBayarIuran = async (userObj) => {
 const updatePengajuan = async (p, newStatus) => {
   let catatan = '';
   if (newStatus === 'ditolak') {
-    catatan = prompt("Alasan penolakan:");
+    catatan = await showPrompt('Alasan penolakan:');
     if (catatan === null) return;
   } else {
-    if (!confirm(`Setujui pengajuan sebesar ${formatRupiah(p.nominal)} dari ${p.nama_lengkap}? Saldo Kas akan otomatis terpotong.`)) return;
+    if (!(await showConfirm(`Setujui pengajuan sebesar ${formatRupiah(p.nominal)} dari ${p.nama_lengkap}? Saldo Kas akan otomatis terpotong.`))) return;
   }
   
   try {
@@ -380,19 +421,19 @@ const updatePengajuan = async (p, newStatus) => {
       body: JSON.stringify({ status: newStatus, catatan_bendahara: catatan })
     });
     if (res.ok) {
-      alert(`Pengajuan berhasil ${newStatus}!`);
+      showToast(`Pengajuan berhasil ${newStatus}!`, 'success');
       fetchPengajuan();
       if (newStatus === 'disetujui') {
         fetchTransaksi();
         fetchSummary();
       }
-    } else alert("Gagal memperbarui status pengajuan.");
+    } else showToast("Gagal memperbarui status pengajuan.", 'error');
   } catch(e) { console.error(e) }
 };
 
 const exportExcel = async () => {
   if (filteredLpjList.value.length === 0) {
-    alert("Tidak ada data untuk diekspor.");
+    showToast("Tidak ada data untuk diekspor.", 'info');
     return;
   }
   
@@ -573,7 +614,7 @@ const renameExplorerItem = async () => {
   const { item, type } = contextMenu.value;
   if (!item) return;
   const currentName = type === 'folder' ? item.nama_folder : item.nama_file;
-  const newName = prompt(`Ganti nama ${type === 'folder' ? 'folder' : 'file'}:`, currentName);
+  const newName = await showPrompt(`Ganti nama ${type === 'folder' ? 'folder' : 'file'}:`, currentName);
   if (!newName || newName.trim() === '' || newName === currentName) {
     closeContextMenu();
     return;
@@ -596,10 +637,10 @@ const renameExplorerItem = async () => {
       fetchExplorerDirectory(explorerCurrentFolderId.value);
     } else {
       const d = await res.json();
-      alert(d.message || "Gagal mengganti nama.");
+      showToast(d.message || "Gagal mengganti nama.", "error");
     }
   } catch (e) {
-    alert("Terjadi kesalahan jaringan.");
+    showToast("Terjadi kesalahan jaringan.", 'info');
   }
   closeContextMenu();
 };
@@ -619,14 +660,14 @@ const downloadFile = async (fileObj) => {
     document.body.removeChild(link);
   } catch (error) {
     console.error("Download failed:", error);
-    alert("Gagal mengunduh file.");
+    showToast("Gagal mengunduh file.", 'error');
   }
 };
 
 const deleteExplorerItem = async () => {
   const { item, type } = contextMenu.value;
   if (!item) return;
-  if (!confirm(`Yakin ingin menghapus ${type === 'folder' ? 'folder' : 'file'} "${type === 'folder' ? item.nama_folder : item.nama_file}"?`)) {
+  if (!(await showConfirm(`Yakin ingin menghapus ${type === 'folder' ? 'folder' : 'file'} "${type === 'folder' ? item.nama_folder : item.nama_file}"?`))) {
     closeContextMenu();
     return;
   }
@@ -912,12 +953,12 @@ window.addEventListener('click', closeContextMenu);
                   <td>{{ formatRupiah(u.nominal_target) }}</td>
                   <td>{{ formatRupiah(u.nominal_terbayar) }}</td>
                   <td>
-                    <span class="badge" :class="u.status === 'lunas' ? 'badge-success' : u.status === 'sebagian' ? 'badge-warning' : 'badge-danger'">
-                      {{ u.status.toUpperCase() }}
+                    <span class="badge" :class="(u.status || 'belum') === 'lunas' ? 'badge-success' : (u.status || 'belum') === 'sebagian' ? 'badge-warning' : 'badge-danger'">
+                      {{ (u.status || 'belum').toUpperCase() }}
                     </span>
                   </td>
                   <td>
-                    <button v-if="u.status !== 'lunas'" class="btn-primary btn-small" @click="promptBayarIuran(u)" style="background: #10b981; border: none;">+ Catat Bayar</button>
+                    <button v-if="(u.status || 'belum') !== 'lunas'" class="btn-primary btn-small" @click="promptBayarIuran(u)" style="background: #10b981; border: none;">+ Catat Bayar</button>
                     <span v-else class="text-muted" style="font-size: 0.85rem;">Lunas ✓</span>
                   </td>
                 </tr>
@@ -954,7 +995,12 @@ window.addEventListener('click', closeContextMenu);
                 </tr>
                 <tr v-for="p in pengajuanList" :key="p.id">
                   <td>{{ new Date(p.created_at).toLocaleDateString('id-ID') }}</td>
-                  <td style="font-weight: 500;">{{ p.nama_lengkap }}</td>
+                  <td style="font-weight: 500;">
+                    {{ p.nama_lengkap }}
+                    <div style="font-size:0.8rem;color:#6b7280;margin-top:2px;">
+                      {{ p.divisi_pic ? '🏷️ ' + p.divisi_pic : (p.pengaju_jabatan ? '👤 ' + p.pengaju_jabatan : '') }}
+                    </div>
+                  </td>
                   <td>{{ p.nama_kategori }}</td>
                   <td>{{ p.keterangan }}</td>
                   <td style="color: #ef4444; font-weight: 600;">{{ formatRupiah(p.nominal) }}</td>
@@ -1076,7 +1122,7 @@ window.addEventListener('click', closeContextMenu);
           </div>
           <div class="form-group">
             <label>Plafon Anggaran (RAB)</label>
-            <input type="number" v-model="formKategori.plafon_dana" min="0" placeholder="Rp 0" />
+            <input type="text" :value="formatCurrencyInput(formKategori.plafon_dana)" @input="formKategori.plafon_dana = parseCurrencyInput($event.target.value)" placeholder="Rp 0" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:8px;box-sizing:border-box;font-size:0.95rem;" />
             <small class="text-muted">Total anggaran maksimal yang direncanakan untuk pos ini.</small>
           </div>
           <div class="modal-actions">
@@ -1158,6 +1204,11 @@ window.addEventListener('click', closeContextMenu);
 </template>
 
 <style scoped>
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
 /* Basic styling matching the aesthetics of MahasiswaDashboard */
 .dashboard-container {
   min-height: 100vh;

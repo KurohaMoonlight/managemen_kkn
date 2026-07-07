@@ -725,6 +725,9 @@ onMounted(() => {
                 class="sg-input"
                 placeholder="Contoh: 001/KKN-DESA/VII/2026"
               />
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                💡 <b>Panduan:</b> [No Urut]/[Kode Instansi]/[Bulan Romawi]/[Tahun]. Contoh: 001/KKN-DESA/VII/2026
+              </div>
             </div>
 
             <!-- Dynamic Fields -->
