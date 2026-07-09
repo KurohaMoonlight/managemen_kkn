@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import SuperAdminFileExplorer from '../components/superadmin/SuperAdminFileExplorer.vue';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow });
@@ -23,6 +24,7 @@ const navItems = [
   { id: 'posko', icon: '🏠', label: 'Manajemen Posko' },
   { id: 'users', icon: '👥', label: 'Manajemen Pengguna' },
   { id: 'reset', icon: '🔑', label: 'Reset Password' },
+  { id: 'explorer', icon: '📁', label: 'File Explorer' },
   { id: 'absensi', icon: '📋', label: 'Laporan Global' },
 ];
 
@@ -855,6 +857,9 @@ const formatTime = (t) => t ? t.substring(0, 5) : '-';
           <div class="sa-table-footer">Total: {{ resetRequests.length }} permintaan</div>
         </div>
       </div>
+
+      <!-- ─── FILE EXPLORER TAB ─────────────────────────────────────── -->
+      <SuperAdminFileExplorer v-if="activeTab === 'explorer'" :token="token" />
 
       <!-- ─── ABSENSI TAB ──────────────────────────────────────── -->
       <div v-if="activeTab === 'absensi'" class="sa-content">

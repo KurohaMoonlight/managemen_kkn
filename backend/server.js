@@ -2588,9 +2588,14 @@ app.get('/api/bendahara/pengajuan', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/bendahara/pengajuan', authenticateToken, upload.single('nota'), compressImages, async (req, res) => {
-  const { kategori_id, nominal, keterangan } = req.body;
-  if (!kategori_id || !nominal || !keterangan?.trim()) {
-    return res.status(400).json({ message: 'Kategori, nominal, dan keterangan wajib diisi.' });
+  const { kategori_id, nama_kategori_manual, nominal, keterangan } = req.body;
+
+  // Harus ada salah satu: kategori_id yang sudah ada ATAU nama kategori baru
+  if (!kategori_id && !nama_kategori_manual?.trim()) {
+    return res.status(400).json({ message: 'Pilih kategori yang ada atau ketik nama kategori baru.' });
+  }
+  if (!nominal || !keterangan?.trim()) {
+    return res.status(400).json({ message: 'Nominal dan keterangan wajib diisi.' });
   }
   const nominalNum = Number(nominal);
   if (isNaN(nominalNum) || nominalNum <= 0) {
@@ -2601,14 +2606,38 @@ app.post('/api/bendahara/pengajuan', authenticateToken, upload.single('nota'), c
     file_nota_url = `/uploads/${req.file.filename}`;
   }
   try {
-    const [kat] = await pool.query('SELECT id FROM keuangan_kategori WHERE id = ? AND posko_id = ?', [kategori_id, req.user.posko_id]);
-    if (kat.length === 0) {
-      return res.status(400).json({ message: 'Kategori RAB tidak valid.' });
+    let final_kategori_id = kategori_id || null;
+
+    // Jika tidak ada kategori_id, cari atau buat kategori baru berdasarkan nama
+    if (!final_kategori_id && nama_kategori_manual?.trim()) {
+      const namaKat = nama_kategori_manual.trim();
+      // Cek apakah sudah ada kategori dengan nama yang sama (case insensitive)
+      const [existing] = await pool.query(
+        'SELECT id FROM keuangan_kategori WHERE LOWER(nama_kategori) = LOWER(?) AND posko_id = ?',
+        [namaKat, req.user.posko_id]
+      );
+      if (existing.length > 0) {
+        final_kategori_id = existing[0].id;
+      } else {
+        // Buat kategori baru
+        const [insKat] = await pool.query(
+          'INSERT INTO keuangan_kategori (posko_id, nama_kategori, plafon_dana) VALUES (?, ?, 0)',
+          [req.user.posko_id, namaKat]
+        );
+        final_kategori_id = insKat.insertId;
+      }
+    } else if (final_kategori_id) {
+      // Validasi kategori_id yang diberikan
+      const [kat] = await pool.query('SELECT id FROM keuangan_kategori WHERE id = ? AND posko_id = ?', [final_kategori_id, req.user.posko_id]);
+      if (kat.length === 0) {
+        return res.status(400).json({ message: 'Kategori RAB tidak valid.' });
+      }
     }
+
     await pool.query(`
       INSERT INTO keuangan_pengajuan (posko_id, user_id, kategori_id, nominal, keterangan, file_nota_url)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [req.user.posko_id, req.user.id, kategori_id, nominalNum, keterangan.trim(), file_nota_url]);
+    `, [req.user.posko_id, req.user.id, final_kategori_id, nominalNum, keterangan.trim(), file_nota_url]);
     res.json({ success: true, message: 'Pengajuan berhasil dikirim.' });
   } catch (error) {
     console.error(error);
