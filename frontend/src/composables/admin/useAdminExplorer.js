@@ -184,10 +184,17 @@ export function useAdminExplorer() {
   const compressSelectedFiles = async () => {
     if (!compressZipName.value) return toastWarning('Masukkan nama ZIP');
     const file_ids = [];
+    let hasFolder = false;
     selectedItems.value.forEach((key) => {
       const [type, id] = key.split('-');
       if (type === 'file') file_ids.push(id);
+      if (type === 'folder') hasFolder = true;
     });
+
+    if (file_ids.length === 0) {
+      if (hasFolder) return toastWarning('Kompresi manual hanya untuk file. Buka folder terlebih dahulu.');
+      return toastWarning('Pilih setidaknya 1 file.');
+    }
 
     isCompressing.value = true;
     try {

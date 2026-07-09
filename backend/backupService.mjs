@@ -15,6 +15,7 @@ import {
   fetchKeuanganLPJ,
   getWeeklyChunksFromPeriod,
   filterAbsensiForChunk,
+  fetchRekapLampiran,
 } from './backupDataHelpers.mjs';
 
 const require = createRequire(import.meta.url);
@@ -142,6 +143,11 @@ export const setupBackupService = (app, pool, UPLOADS_DIR, authenticateToken, re
         const logbooks = await fetchRekapLogbook(pool, posko_id, startDate, endDate);
         const logbookPdf = await pdfGen.generateLogbookPDF(logbooks);
         archive.append(logbookPdf, { name: 'Logbook/Cetakan_Logbook_Seluruh_Periode.pdf' });
+
+        console.log('[Backup] PDF Lampiran 9 (Rekapitulasi Keaktifan)...');
+        const rekapLampiran = await fetchRekapLampiran(pool, posko_id);
+        const lampiran9Pdf = await pdfGen.generateLampiran9PDF(rekapLampiran);
+        archive.append(lampiran9Pdf, { name: 'Absensi/Cetakan_Lampiran_9_Rekapitulasi_Keaktifan.pdf' });
       }
 
       if (!meta) meta = await fetchPoskoMeta(pool, posko_id);

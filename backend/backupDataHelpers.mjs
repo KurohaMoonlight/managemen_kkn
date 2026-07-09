@@ -157,3 +157,41 @@ export function toYMD(dateInput) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+export async function fetchRekapLampiran(pool, posko_id) {
+  const [mahasiswa] = await pool.query(
+    'SELECT id as user_id, nim, nama_lengkap as nama FROM users WHERE posko_id = ? AND role IN ("mahasiswa", "admin") ORDER BY nim ASC',
+    [posko_id]
+  );
+
+  const [logbooks] = await pool.query(
+    'SELECT user_id, waktu_mulai, waktu_selesai FROM logbooks WHERE user_id IN (SELECT id FROM users WHERE posko_id = ?)',
+    [posko_id]
+  );
+
+  const rekap = mahasiswa.map(mhs => {
+    let totalMinutes = 0;
+    const mhsLogbooks = logbooks.filter(l => l.user_id === mhs.user_id);
+    
+    mhsLogbooks.forEach(log => {
+      if (log.waktu_mulai && log.waktu_selesai) {
+        const startParts = log.waktu_mulai.split(':');
+        const endParts = log.waktu_selesai.split(':');
+        if (startParts.length >= 2 && endParts.length >= 2) {
+          const startMins = parseInt(startParts[0]) * 60 + parseInt(startParts[1]);
+          const endMins = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
+          let diff = endMins - startMins;
+          if (diff < 0) diff += 24 * 60;
+          totalMinutes += diff;
+        }
+      }
+    });
+
+    return {
+      ...mhs,
+      total_jam: Math.floor(totalMinutes / 60)
+    };
+  });
+
+  return rekap;
+}

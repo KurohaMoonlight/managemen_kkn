@@ -1,4 +1,4 @@
-﻿import { ref, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useToast, useConfirm } from './useNotification.js';
 
 export function usePddExplorer(tokenRef) {
@@ -49,7 +49,9 @@ export function usePddExplorer(tokenRef) {
   };
   const compressSelectedFiles = async () => {
     if (!compressZipName.value) return toastWarning('Masukkan nama ZIP');
-    const fi = []; selectedItems.value.forEach(k => { const [t,id] = k.split('-'); if (t==='file') fi.push(id); });
+    const fi = []; let hasFolder = false;
+    selectedItems.value.forEach(k => { const [t,id] = k.split('-'); if (t==='file') fi.push(id); if (t==='folder') hasFolder = true; });
+    if (fi.length === 0) return hasFolder ? toastWarning('Kompresi manual hanya untuk file. Buka folder terlebih dahulu.') : toastWarning('Pilih setidaknya 1 file.');
     isCompressing.value = true;
     try { const res = await fetch('/api/arsip/compress', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` }, body: JSON.stringify({ file_ids: fi, folder_id: currentFolder.value.id, zip_name: compressZipName.value }) }); if (res.ok) { toastSuccess('Berhasil dikompresi'); showCompressModal.value = false; clearSelection(); await fetchDirectory(currentFolder.value); } } catch { toastError('Gagal mengompresi'); } finally { isCompressing.value = false; }
   };

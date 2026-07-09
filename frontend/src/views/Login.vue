@@ -1,12 +1,39 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useToast } from '../composables/useNotification.js';
 
+const { success: toastSuccess, error: toastError } = useToast();
 const router = useRouter();
 const nim = ref('');
 const password = ref('');
 const errorMsg = ref('');
 const loading = ref(false);
+
+const showResetModal = ref(false);
+const resetNim = ref('');
+const resetLoading = ref(false);
+
+const requestResetPassword = async () => {
+  if (!resetNim.value) return;
+  resetLoading.value = true;
+  try {
+    const res = await fetch('/api/request-reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nim: resetNim.value })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Gagal mengajukan permohonan reset.');
+    toastSuccess(data.message);
+    showResetModal.value = false;
+    resetNim.value = '';
+  } catch (err) {
+    toastError(err.message);
+  } finally {
+    resetLoading.value = false;
+  }
+};
 
 const roleToPath = {
   superadmin: '/superadmin',
@@ -60,6 +87,10 @@ const handleLogin = async () => {
           <input type="password" id="password" v-model="password" required placeholder="••••••••" autocomplete="current-password" />
         </div>
 
+        <div style="display: flex; justify-content: flex-end;">
+          <a href="#" @click.prevent="showResetModal = true" class="forgot-password">Lupa Password?</a>
+        </div>
+
         <div v-if="errorMsg" class="error-message">
           {{ errorMsg }}
         </div>
@@ -71,6 +102,29 @@ const handleLogin = async () => {
       </form>
 
       <p class="footer-note">Sistem Manajemen KKN © 2026</p>
+    </div>
+
+    <!-- Modal Lupa Password -->
+    <div v-if="showResetModal" class="modal-overlay" @click.self="showResetModal = false">
+      <div class="modal-content animate-fade-in">
+        <div class="modal-header">
+          <h3>Lupa Password?</h3>
+          <button class="close-btn" @click="showResetModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">Masukkan NIM Anda untuk mengajukan permohonan reset password ke Superadmin.</p>
+          <div class="form-group">
+            <label for="resetNim">NIM</label>
+            <input type="text" id="resetNim" v-model="resetNim" required placeholder="Masukkan NIM Anda" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" @click="showResetModal = false" :disabled="resetLoading">Batal</button>
+          <button type="button" class="btn btn-primary" @click="requestResetPassword" :disabled="resetLoading">
+            {{ resetLoading ? 'Mengajukan...' : 'Ajukan Reset' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -192,4 +246,29 @@ const handleLogin = async () => {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.forgot-password {
+  color: #819A91; font-size: 0.9rem; text-decoration: none; font-weight: 500; transition: color 0.2s;
+}
+.forgot-password:hover { color: #6a8279; text-decoration: underline; }
+
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+  display: flex; justify-content: center; align-items: center; z-index: 1000;
+}
+.modal-content {
+  background: white; border-radius: 16px; padding: 2rem; width: 90%; max-width: 400px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.modal-header h3 { margin: 0; font-size: 1.2rem; color: #202120; font-family: var(--font-display, sans-serif); }
+.close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #aaa; transition: color 0.2s; padding: 0; line-height: 1; }
+.close-btn:hover { color: #ef4444; }
+.modal-footer { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.8rem; }
+.btn-secondary { background: #f1f5f9; color: #475569; border: none; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: background 0.2s; }
+.btn-secondary:hover { background: #e2e8f0; }
+.btn-primary { background: #819A91; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: background 0.2s; }
+.btn-primary:hover:not(:disabled) { background: #6a8279; }
+.btn-primary:disabled { background: #A7C1A8; cursor: not-allowed; }
 </style>

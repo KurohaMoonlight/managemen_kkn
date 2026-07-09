@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import CetakAbsensiModal from '../CetakAbsensiModal.vue';
 import CetakLogbookModal from '../CetakLogbookModal.vue';
+import CetakLampiranModal from '../CetakLampiranModal.vue';
 import { adminToken, currentAdminUser } from '../../composables/admin/adminContext.js';
 import { useAdminAbsensi } from '../../composables/admin/useAdminAbsensi.js';
 
@@ -34,6 +35,8 @@ const {
   submitAddAbsen,
   init,
 } = useAdminAbsensi();
+
+const showCetakLampiranModal = ref(false);
 
 onMounted(init);
 </script>
@@ -94,6 +97,7 @@ onMounted(init);
           <button class="btn btn-outline btn-small" style="background-color: #10b981; color: white; border-color: #10b981; flex: 1; min-width: 120px;" @click="exportAbsensiExcel">📊 Excel</button>
           <button class="btn btn-outline btn-small" style="background-color: #f59e0b; color: white; border-color: #f59e0b; flex: 1; min-width: 120px;" @click="showCetakLogbookModal = true">📄 Cetak Logbook</button>
           <button class="btn btn-outline btn-small" style="background-color: #ef4444; color: white; border-color: #ef4444; flex: 1; min-width: 120px;" @click="showCetakModal = true">📄 PDF Absensi</button>
+          <button class="btn btn-outline btn-small" style="background-color: #3b82f6; color: white; border-color: #3b82f6; flex: 1; min-width: 120px;" @click="showCetakLampiranModal = true">📄 Cetak Rekapitulasi Keaktifan</button>
           <button class="btn btn-primary btn-small" style="flex: 1; min-width: 120px;" @click="openAddAbsenModal">+ Tambah Manual</button>
         </div>
       </div>
@@ -245,6 +249,14 @@ onMounted(init);
     :posko-id="currentAdminUser.posko_id"
     :token="adminToken"
     @close="showCetakModal = false"
+  />
+
+  <!-- Cetak Lampiran 9 Modal -->
+  <CetakLampiranModal
+    :show="showCetakLampiranModal"
+    :posko-id="currentAdminUser.posko_id"
+    :token="adminToken"
+    @close="showCetakLampiranModal = false"
   />
 
   <!-- Cetak Logbook Modal -->

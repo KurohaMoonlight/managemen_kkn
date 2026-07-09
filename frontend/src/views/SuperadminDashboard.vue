@@ -22,6 +22,7 @@ const navItems = [
   { id: 'overview', icon: '📊', label: 'Ringkasan' },
   { id: 'posko', icon: '🏠', label: 'Manajemen Posko' },
   { id: 'users', icon: '👥', label: 'Manajemen Pengguna' },
+  { id: 'reset', icon: '🔑', label: 'Reset Password' },
   { id: 'absensi', icon: '📋', label: 'Laporan Global' },
 ];
 
@@ -418,6 +419,35 @@ const deleteUser = async (user) => {
   } catch (e) { alert('Gagal: ' + e.message); }
 };
 
+// ─── Reset Password Management ────────────────────────────────────────────────
+const resetRequests = ref([]);
+const resetLoading = ref(false);
+
+const fetchResetRequests = async () => {
+  resetLoading.value = true;
+  try {
+    const res = await fetch('/api/superadmin/reset-password-requests', { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) resetRequests.value = await res.json();
+  } catch (e) { console.error(e); }
+  finally { resetLoading.value = false; }
+};
+
+const handleResetAction = async (id, action) => {
+  if (!confirm(`Anda yakin ingin ${action === 'approve' ? 'menyetujui' : 'menolak'} permintaan ini?`)) return;
+  try {
+    const res = await fetch(`/api/superadmin/reset-password-requests/${id}/${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.message);
+    alert(d.message);
+    await fetchResetRequests();
+  } catch (e) {
+    alert('Gagal: ' + e.message);
+  }
+};
+
 // ─── Global Absensi ───────────────────────────────────────────────────────────
 const absensiDate = ref(new Date().toISOString().split('T')[0]);
 const absensiPosko = ref('');
@@ -486,11 +516,13 @@ onMounted(() => {
   fetchGDriveStatus();
   fetchPosko();
   fetchUsers();
+  fetchResetRequests();
 });
 
 const switchTab = async (tab) => {
   activeTab.value = tab;
   if (tab === 'absensi') await fetchAbsensi();
+  if (tab === 'reset') await fetchResetRequests();
 };
 
 const getStatusBadge = (status) => {
@@ -772,6 +804,55 @@ const formatTime = (t) => t ? t.substring(0, 5) : '-';
             </tbody>
           </table>
           <div class="sa-table-footer">Total: {{ filteredUsers.length }} pengguna</div>
+        </div>
+      </div>
+
+      <!-- ─── RESET PASSWORD TAB ──────────────────────────────────────── -->
+      <div v-if="activeTab === 'reset'" class="sa-content">
+        <div class="sa-header-actions">
+          <h2>🔑 Permintaan Reset Password</h2>
+          <button class="sa-btn" @click="fetchResetRequests">🔄 Segarkan</button>
+        </div>
+
+        <div v-if="resetLoading" class="sa-loading-placeholder">Memuat data permintaan...</div>
+        <div v-else-if="resetRequests.length === 0" class="sa-empty-state">
+          <div class="empty-icon">✨</div>
+          <p>Tidak ada permintaan reset password saat ini.</p>
+        </div>
+
+        <div v-else class="sa-table-wrapper">
+          <table class="sa-table">
+            <thead>
+              <tr>
+                <th>Tanggal Pengajuan</th>
+                <th>NIM</th>
+                <th>Nama Lengkap</th>
+                <th>Role / Posko</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in resetRequests" :key="r.id">
+                <td>{{ new Date(r.created_at).toLocaleString('id-ID') }}</td>
+                <td><strong>{{ r.nim }}</strong></td>
+                <td>{{ r.nama_lengkap }}</td>
+                <td>{{ r.role }} <span v-if="r.nama_posko">({{ r.nama_posko }})</span></td>
+                <td>
+                  <span class="sa-badge" :class="{ 'sa-badge-warning': r.status === 'pending', 'sa-badge-success': r.status === 'approved', 'sa-badge-danger': r.status === 'rejected' }">
+                    {{ r.status }}
+                  </span>
+                </td>
+                <td>
+                  <div class="sa-action-group" v-if="r.status === 'pending'">
+                    <button class="sa-btn-icon success" @click="handleResetAction(r.id, 'approve')" title="Setujui">✔️</button>
+                    <button class="sa-btn-icon danger" @click="handleResetAction(r.id, 'reject')" title="Tolak">❌</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="sa-table-footer">Total: {{ resetRequests.length }} permintaan</div>
         </div>
       </div>
 

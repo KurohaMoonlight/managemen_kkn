@@ -479,3 +479,60 @@ const renderPDF = async (htmlContent, landscape = false) => {
     }
   }
 };
+
+export async function generateLampiran9PDF(rekapData) {
+  const chunks = rekapData.length ? chunkArray(rekapData, 15) : [[]];
+
+  const pages = chunks.map((chunk, pageIndex) => {
+    const rows = chunk.map((mhs, idx) => `
+      <tr>
+        <td style="border: 1px solid black; padding: 8px; text-align: center; font-size: 11pt;">${pageIndex * 15 + idx + 1}</td>
+        <td style="border: 1px solid black; padding: 8px; text-align: center; font-size: 11pt;">${mhs.nim}</td>
+        <td style="border: 1px solid black; padding: 8px; font-size: 11pt;">${escapeHtml(mhs.nama)}</td>
+        <td style="border: 1px solid black; padding: 8px; text-align: center; font-size: 11pt;">${mhs.total_jam}</td>
+      </tr>
+    `).join('');
+
+    const emptyRow = chunk.length === 0
+      ? '<tr><td colspan="4" style="border: 1px solid black; padding: 15px; text-align: center; color: gray;">Tidak ada data mahasiswa.</td></tr>'
+      : '';
+
+    return `
+      <div style="${pageIndex > 0 ? 'page-break-before: always; padding-top: 10mm;' : ''}">
+        <h3 style="color: #002060; font-family: 'Times New Roman', Times, serif; font-size: 14pt; margin-bottom: 20px; font-weight: bold;">Lampiran 9. Rekapitulasi Keaktifan Tiap Mahasiswa</h3>
+        <h4 style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; margin-bottom: 20px; font-weight: bold;">REKAPITULASI KEAKTIFAN MAHASISWA</h4>
+        <table style="width: 100%; border-collapse: collapse; font-family: 'Times New Roman', Times, serif; margin-bottom: 30px;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid black; padding: 8px; text-align: center; font-weight: bold; font-size: 11pt; width: 10%;">No</th>
+              <th style="border: 1px solid black; padding: 8px; text-align: center; font-weight: bold; font-size: 11pt; width: 20%;">NIM</th>
+              <th style="border: 1px solid black; padding: 8px; text-align: center; font-weight: bold; font-size: 11pt; width: 45%;">Nama</th>
+              <th style="border: 1px solid black; padding: 8px; text-align: center; font-weight: bold; font-size: 11pt; width: 25%;">Total Jam</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+            ${emptyRow}
+          </tbody>
+        </table>
+        ${pageIndex === chunks.length - 1 ? '<div style="font-family: \'Times New Roman\', Times, serif; font-size: 11pt;"><strong>Keterangan:</strong> total Jam dihitung dari logbook</div>' : ''}
+      </div>`;
+  }).join('');
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          @page { margin: 10mm; }
+          body { font-family: "Times New Roman", Times, serif; color: black; background: white; margin: 0; padding: 10mm; }
+        </style>
+      </head>
+      <body>
+        ${pages}
+      </body>
+    </html>
+  `;
+  return renderPDF(html, false);
+}

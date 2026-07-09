@@ -173,7 +173,7 @@ const submitAbsensi = async (qr_data, lat, lng) => {
         <div class="status-icon pulse-animation">🎉</div>
       </div>
       <h1 class="status-title">Presensi Berhasil!</h1>
-      <p class="status-desc">Tercatat pada pukul <b>{{ new Date(absensiData?.created_at).toLocaleTimeString('id-ID') }}</b> WIB.</p>
+      <p class="status-desc">Tercatat pada pukul <b>{{ absensiData?.waktu ? absensiData.waktu.slice(0, 5) : '--:--' }}</b> WIB.</p>
       
       <div class="countdown-area">
         <p class="countdown-label">Sesi Presensi Berikutnya</p>

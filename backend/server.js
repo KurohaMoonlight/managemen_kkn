@@ -436,6 +436,16 @@ const initializeDb = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reset_password_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     // Seed superadmin if not exists
     const [saRows] = await pool.query(`SELECT id FROM users WHERE role = 'superadmin' LIMIT 1`);
     if (saRows.length === 0) {
@@ -495,6 +505,32 @@ setInterval(purgeExpiredFolders, 60 * 60 * 1000);
 // ─── HEALTH ────────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({ status: 'active', timestamp: new Date().toISOString(), uptime: Math.round(process.uptime()) });
+});
+
+// ─── RESET PASSWORD REQUEST ─────────────────────────────────────────────────────────────
+app.post('/api/request-reset-password', async (req, res) => {
+  try {
+    const { nim } = req.body;
+    if (!nim) return res.status(400).json({ message: 'NIM harus diisi.' });
+
+    const [userRows] = await pool.query('SELECT id FROM users WHERE nim = ?', [nim]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: 'NIM tidak terdaftar.' });
+    }
+    const userId = userRows[0].id;
+
+    // Check if there's already a pending request
+    const [pendingRows] = await pool.query("SELECT id FROM reset_password_requests WHERE user_id = ? AND status = 'pending'", [userId]);
+    if (pendingRows.length > 0) {
+      return res.status(400).json({ message: 'Anda sudah memiliki permintaan reset password yang sedang menunggu persetujuan.' });
+    }
+
+    await pool.query("INSERT INTO reset_password_requests (user_id) VALUES (?)", [userId]);
+    res.json({ message: 'Permintaan reset password berhasil diajukan. Silakan tunggu persetujuan Superadmin.' });
+  } catch (error) {
+    console.error('Request reset password error:', error);
+    res.status(500).json({ message: 'Terjadi kesalahan pada server.' });
+  }
 });
 
 // ─── LOGIN ─────────────────────────────────────────────────────────────────────
@@ -2922,6 +2958,55 @@ app.get('/api/posko/:id/rekap-logbook', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/posko/:id/rekap-lampiran', authenticateToken, async (req, res) => {
+  try {
+    const posko_id = req.params.id;
+
+    if (req.user.role !== 'superadmin' && req.user.posko_id != posko_id) {
+      return res.status(403).json({ success: false, message: 'Akses ditolak.' });
+    }
+
+    const [mahasiswa] = await pool.query(
+      'SELECT id as user_id, nim, nama_lengkap as nama FROM users WHERE posko_id = ? AND role IN ("mahasiswa", "admin") ORDER BY nim ASC',
+      [posko_id]
+    );
+
+    const [logbooks] = await pool.query(
+      'SELECT user_id, waktu_mulai, waktu_selesai FROM logbooks WHERE user_id IN (SELECT id FROM users WHERE posko_id = ?)',
+      [posko_id]
+    );
+
+    const rekap = mahasiswa.map(mhs => {
+      let totalMinutes = 0;
+      const mhsLogbooks = logbooks.filter(l => l.user_id === mhs.user_id);
+      
+      mhsLogbooks.forEach(log => {
+        if (log.waktu_mulai && log.waktu_selesai) {
+          const startParts = log.waktu_mulai.split(':');
+          const endParts = log.waktu_selesai.split(':');
+          if (startParts.length >= 2 && endParts.length >= 2) {
+            const startMins = parseInt(startParts[0]) * 60 + parseInt(startParts[1]);
+            const endMins = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
+            let diff = endMins - startMins;
+            if (diff < 0) diff += 24 * 60;
+            totalMinutes += diff;
+          }
+        }
+      });
+
+      return {
+        ...mhs,
+        total_jam: Math.floor(totalMinutes / 60)
+      };
+    });
+
+    res.json({ success: true, data: rekap });
+  } catch (error) {
+    console.error('Error rekap-lampiran:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/posko/:id/rekap-absensi', authenticateToken, async (req, res) => {
   try {
     const posko_id = req.params.id;
@@ -3055,10 +3140,63 @@ app.put('/api/admin/buku-tamu/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── SUPERADMIN: RESET PASSWORD REQUESTS ──────────────────────────────────────
+app.get('/api/superadmin/reset-password-requests', authenticateToken, requireSuperadmin, async (req, res) => {
+  try {
+    const query = `
+      SELECT r.id, r.user_id, r.status, r.created_at, u.nim, u.nama_lengkap, u.role, p.nama_posko
+      FROM reset_password_requests r
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN posko p ON u.posko_id = p.id
+      ORDER BY r.created_at DESC
+    `;
+    const [rows] = await pool.query(query);
+    res.json(rows);
+  } catch (error) {
+    console.error('Fetch reset requests error:', error);
+    res.status(500).json({ message: 'Gagal mengambil data permintaan reset password' });
+  }
+});
+
+app.post('/api/superadmin/reset-password-requests/:id/approve', authenticateToken, requireSuperadmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [reqRows] = await pool.query("SELECT user_id, status FROM reset_password_requests WHERE id = ?", [id]);
+    if (reqRows.length === 0) return res.status(404).json({ message: 'Permintaan tidak ditemukan' });
+    if (reqRows[0].status !== 'pending') return res.status(400).json({ message: 'Permintaan sudah diproses sebelumnya' });
+
+    const userId = reqRows[0].user_id;
+    const [userRows] = await pool.query("SELECT nim FROM users WHERE id = ?", [userId]);
+    if (userRows.length === 0) return res.status(404).json({ message: 'Pengguna tidak ditemukan' });
+
+    const nim = userRows[0].nim;
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(nim, salt);
+
+    await pool.query("UPDATE users SET password = ? WHERE id = ?", [hash, userId]);
+    await pool.query("UPDATE reset_password_requests SET status = 'approved' WHERE id = ?", [id]);
+
+    res.json({ message: 'Password berhasil direset menjadi NIM.' });
+  } catch (error) {
+    console.error('Approve reset request error:', error);
+    res.status(500).json({ message: 'Gagal menyetujui permintaan' });
+  }
+});
+
+app.post('/api/superadmin/reset-password-requests/:id/reject', authenticateToken, requireSuperadmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("UPDATE reset_password_requests SET status = 'rejected' WHERE id = ?", [id]);
+    res.json({ message: 'Permintaan reset password ditolak.' });
+  } catch (error) {
+    console.error('Reject reset request error:', error);
+    res.status(500).json({ message: 'Gagal menolak permintaan' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`=========================================`);
   console.log(`🚀 Express server running on port ${PORT}`);
   console.log(`🔐 Superadmin URL: http://localhost:5173/superadmin`);
   console.log(`=========================================`);
 });
-
