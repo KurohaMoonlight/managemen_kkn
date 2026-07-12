@@ -980,8 +980,11 @@ app.get('/api/posko/qr', authenticateToken, requireAdminOrAbove, async (req, res
   try {
     const poskoId = req.user.posko_id;
     if (!poskoId) return res.status(400).json({ message: 'Admin tidak terikat ke posko.' });
-    const [rows] = await pool.query('SELECT qr_secret FROM posko WHERE id = ?', [poskoId]);
-    res.json({ qr_secret: rows.length > 0 ? rows[0].qr_secret : 'KKN_POSKO_2026' });
+    const [rows] = await pool.query('SELECT qr_secret, nama_posko FROM posko WHERE id = ?', [poskoId]);
+    res.json({
+      qr_secret: rows.length > 0 ? rows[0].qr_secret : 'KKN_POSKO_2026',
+      nama_posko: rows.length > 0 ? rows[0].nama_posko : null
+    });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil QR Secret.' });
   }
@@ -1146,6 +1149,41 @@ app.put('/api/users/:id', authenticateToken, requireAdminOrAbove, async (req, re
     res.json({ success: true, message: 'Mahasiswa berhasil diperbarui.' });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengupdate pengguna.' });
+  }
+});
+
+// DELETE user (admin only — same posko, mahasiswa only, requires password)
+app.delete('/api/users/:id', authenticateToken, requireAdminOrAbove, async (req, res) => {
+  const { nim_konfirmasi, password } = req.body;
+  if (!nim_konfirmasi || !password) {
+    return res.status(400).json({ message: 'NIM konfirmasi dan password wajib diisi.' });
+  }
+  try {
+    const poskoId = req.user.posko_id;
+    if (!poskoId) return res.status(400).json({ message: 'Admin tidak terikat ke posko manapun.' });
+
+    // Verify admin password
+    const [adminRows] = await pool.query('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    if (adminRows.length === 0) return res.status(404).json({ message: 'Akun admin tidak ditemukan.' });
+    const passwordMatch = await bcrypt.compare(password, adminRows[0].password);
+    if (!passwordMatch) return res.status(403).json({ message: 'Password admin salah.' });
+
+    // Get target user
+    const [targetRows] = await pool.query('SELECT nim, role, posko_id FROM users WHERE id = ?', [req.params.id]);
+    if (targetRows.length === 0) return res.status(404).json({ message: 'Pengguna tidak ditemukan.' });
+    if (targetRows[0].posko_id !== poskoId) return res.status(403).json({ message: 'Tidak dapat menghapus mahasiswa dari posko lain.' });
+    if (targetRows[0].role !== 'mahasiswa') return res.status(403).json({ message: 'Admin hanya dapat menghapus akun mahasiswa.' });
+
+    // Verify NIM matches
+    if (targetRows[0].nim !== nim_konfirmasi) {
+      return res.status(400).json({ message: 'NIM konfirmasi tidak cocok dengan akun yang akan dihapus.' });
+    }
+
+    await pool.query('DELETE FROM users WHERE id = ? AND posko_id = ?', [req.params.id, poskoId]);
+    res.json({ success: true, message: 'Akun mahasiswa berhasil dihapus.' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ message: 'Gagal menghapus pengguna.' });
   }
 });
 

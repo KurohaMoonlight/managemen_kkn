@@ -6,10 +6,14 @@ export function useAdminUsers() {
   const searchQuery = ref('');
   const showAddModal = ref(false);
   const showEditModal = ref(false);
+  const showDeleteModal = ref(false);
   const newUser = ref({ nim: '', nama_lengkap: '', role: 'mahasiswa', jabatan: 'Anggota' });
   const editUser = ref({ id: null, nama_lengkap: '', role: '', jabatan: '', password: '' });
+  const deleteTarget = ref({ id: null, nim: '', nama_lengkap: '' });
+  const deleteForm = ref({ nim_konfirmasi: '', password: '' });
   const actionLoading = ref(false);
   const errorMessage = ref('');
+  const deleteError = ref('');
 
   const loadUsers = async () => {
     loading.value = true;
@@ -103,6 +107,46 @@ export function useAdminUsers() {
     }
   };
 
+  // ─── Delete User ────────────────────────────────────────────────────────────
+  const openDeleteModal = (user) => {
+    deleteTarget.value = { id: user.id, nim: user.nim, nama_lengkap: user.nama_lengkap };
+    deleteForm.value = { nim_konfirmasi: '', password: '' };
+    deleteError.value = '';
+    showDeleteModal.value = true;
+  };
+
+  const submitDeleteUser = async () => {
+    if (!deleteForm.value.nim_konfirmasi || !deleteForm.value.password) {
+      deleteError.value = 'NIM konfirmasi dan password wajib diisi.';
+      return;
+    }
+    actionLoading.value = true;
+    deleteError.value = '';
+    try {
+      const res = await fetch(`/api/users/${deleteTarget.value.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          nim_konfirmasi: deleteForm.value.nim_konfirmasi,
+          password: deleteForm.value.password,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Gagal menghapus user');
+
+      showDeleteModal.value = false;
+      loadUsers();
+    } catch (error) {
+      deleteError.value = error.message;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
   onMounted(loadUsers);
 
   return {
@@ -111,8 +155,12 @@ export function useAdminUsers() {
     searchQuery,
     showAddModal,
     showEditModal,
+    showDeleteModal,
     newUser,
     editUser,
+    deleteTarget,
+    deleteForm,
+    deleteError,
     actionLoading,
     errorMessage,
     loadUsers,
@@ -121,5 +169,7 @@ export function useAdminUsers() {
     submitAddUser,
     openEditModal,
     submitEditUser,
+    openDeleteModal,
+    submitDeleteUser,
   };
 }
