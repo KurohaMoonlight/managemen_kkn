@@ -1,14 +1,25 @@
 import { ref, computed } from 'vue';
 import { useToast, useConfirm } from '../useNotification.js';
 import { adminToken, currentAdminUser } from './adminContext.js';
+import { useBaseExplorer } from '../useBaseExplorer.js';
+import { getFileIcon, downloadBlob } from '../../utils/fileHelpers.js';
 
 export function useAdminExplorer() {
   const { success: toastSuccess, error: toastError, info: toastInfo, warning: toastWarning } = useToast();
   const { confirm: showConfirm } = useConfirm();
 
-  // --- ADVANCED EXPLORER STATES ---
-  const selectedItems = ref(new Set());
-  const lastSelectedId = ref(null);
+  // ─── Gunakan base composable (virtual scroll, selection, context menu, preview) ──
+  const base = useBaseExplorer();
+
+  // Shorthand refs dari base (untuk kemudahan akses di dalam composable ini)
+  const {
+    explorerScrollTop, folderFiles, virtualFiles, spacerTop, spacerBottom,
+    selectedItems, lastSelectedId, isSelected, clearSelection,
+    contextMenu, closeContextMenu,
+    previewFile, showPreviewModal,
+  } = base;
+
+  // ─── ADVANCED EXPLORER STATES ─────────────────────────────────────────────
   const viewMode = ref('grid');
   const isDragging = ref(false);
 
@@ -22,33 +33,14 @@ export function useAdminExplorer() {
   const targetZipFile = ref(null);
   const extractNewFolderName = ref('');
 
-  // --- FILE EXPLORER STATES ---
+  // ─── FILE EXPLORER STATES ─────────────────────────────────────────────────
   const explorerFolders = ref([]);
-  const folderFiles = ref([]);
   const currentFolder = ref({ id: null, nama_folder: 'Beranda' });
   const folderStack = ref([{ id: null, nama_folder: 'Beranda' }]);
   const isFetchingFiles = ref(false);
   const explorerPage = ref(1);
   const explorerHasMore = ref(false);
   const isLoadingMore = ref(false);
-
-  const ITEM_HEIGHT = 120;
-  const COLS = 5;
-  const VISIBLE_ROWS = 4;
-  const explorerScrollTop = ref(0);
-  const visibleStartIndex = computed(() => {
-    return Math.max(0, Math.floor(explorerScrollTop.value / ITEM_HEIGHT) * COLS - COLS);
-  });
-  const visibleEndIndex = computed(() => {
-    return visibleStartIndex.value + (VISIBLE_ROWS + 2) * COLS;
-  });
-  const virtualFiles = computed(() => folderFiles.value.slice(visibleStartIndex.value, visibleEndIndex.value));
-  const spacerTop = computed(() => Math.floor(visibleStartIndex.value / COLS) * ITEM_HEIGHT + 'px');
-  const spacerBottom = computed(() => {
-    const totalRows = Math.ceil(folderFiles.value.length / COLS);
-    const endRow = Math.ceil(visibleEndIndex.value / COLS);
-    return Math.max(0, totalRows - endRow) * ITEM_HEIGHT + 'px';
-  });
 
   const clipboard = ref({ action: null, type: null, id: null, nama: null });
 
@@ -65,60 +57,16 @@ export function useAdminExplorer() {
   const folderFormName = ref('');
   const activeFolderId = ref(null);
 
-  const contextMenu = ref({
-    visible: false,
-    x: 0,
-    y: 0,
-    targetType: null,
-    item: null,
-  });
-
-  const previewFile = ref(null);
-  const showPreviewModal = ref(false);
-
   const explorerSearchQuery = ref('');
 
-  const isSelected = (type, id) => selectedItems.value.has(type + '-' + id);
-
+  // ─── Selection Wrapper (meneruskan explorerFolders ke base.toggleSelection) ──
   const toggleSelection = (e, type, id) => {
-    const key = type + '-' + id;
-    if (e.shiftKey && lastSelectedId.value) {
-      const allItems = [
-        ...explorerFolders.value.map((f) => 'folder-' + f.id),
-        ...folderFiles.value.map((f) => 'file-' + f.id),
-      ];
-      const startIdx = allItems.indexOf(lastSelectedId.value);
-      const endIdx = allItems.indexOf(key);
-      if (startIdx !== -1 && endIdx !== -1) {
-        const min = Math.min(startIdx, endIdx);
-        const max = Math.max(startIdx, endIdx);
-        for (let i = min; i <= max; i++) {
-          selectedItems.value.add(allItems[i]);
-        }
-      }
-    } else if (e.ctrlKey || e.metaKey) {
-      if (selectedItems.value.has(key)) selectedItems.value.delete(key);
-      else selectedItems.value.add(key);
-      lastSelectedId.value = key;
-    } else {
-      selectedItems.value.clear();
-      selectedItems.value.add(key);
-      lastSelectedId.value = key;
-    }
+    base.toggleSelection(e, type, id, explorerFolders.value);
   };
 
-  const clearSelection = () => {
-    selectedItems.value.clear();
-    lastSelectedId.value = null;
-  };
-
-  const handleDragOver = () => {
-    isDragging.value = true;
-  };
-
-  const handleDragLeave = () => {
-    isDragging.value = false;
-  };
+  // ─── Drag & Drop ──────────────────────────────────────────────────────────
+  const handleDragOver = () => { isDragging.value = true; };
+  const handleDragLeave = () => { isDragging.value = false; };
 
   const handleDrop = async (e) => {
     isDragging.value = false;
@@ -153,6 +101,7 @@ export function useAdminExplorer() {
     }
   };
 
+  // ─── Bulk Delete ──────────────────────────────────────────────────────────
   const deleteSelectedItems = async () => {
     if (selectedItems.value.size === 0) return;
     if (!(await showConfirm('Hapus ' + selectedItems.value.size + ' item terpilih?'))) return;
@@ -181,6 +130,7 @@ export function useAdminExplorer() {
     }
   };
 
+  // ─── Compress ─────────────────────────────────────────────────────────────
   const compressSelectedFiles = async () => {
     if (!compressZipName.value) return toastWarning('Masukkan nama ZIP');
     const file_ids = [];
@@ -220,6 +170,7 @@ export function useAdminExplorer() {
     }
   };
 
+  // ─── Extract ──────────────────────────────────────────────────────────────
   const submitExtract = async () => {
     if (!targetZipFile.value) return;
     isExtracting.value = true;
@@ -245,6 +196,7 @@ export function useAdminExplorer() {
     }
   };
 
+  // ─── Context Menu Handlers ────────────────────────────────────────────────
   const onWhitespaceRightClick = (event) => {
     if (event.target.closest('.file-item')) return;
     contextMenu.value = {
@@ -268,138 +220,6 @@ export function useAdminExplorer() {
     } else {
       onWhitespaceRightClick(e);
     }
-  };
-
-  const fetchDirectory = async (folderObj) => {
-    currentFolder.value = folderObj;
-    isFetchingFiles.value = true;
-    explorerPage.value = 1;
-    explorerHasMore.value = false;
-    explorerScrollTop.value = 0;
-
-    const stackIndex = folderStack.value.findIndex((f) => f.id === folderObj.id);
-    if (stackIndex > -1) {
-      folderStack.value = folderStack.value.slice(0, stackIndex + 1);
-    } else {
-      folderStack.value.push(folderObj);
-    }
-
-    const pId = folderObj.id ? `?parentId=${folderObj.id}&page=1&limit=50` : '?page=1&limit=50';
-    const searchParam = explorerSearchQuery.value
-      ? `&search=${encodeURIComponent(explorerSearchQuery.value)}`
-      : '';
-    try {
-      const res = await fetch(`/api/arsip/directory${pId}${searchParam}`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        explorerFolders.value = data.folders;
-        folderFiles.value = data.files;
-        explorerHasMore.value = data.hasMore;
-      }
-    } catch (e) {
-      console.error('Gagal ambil direktori', e);
-    } finally {
-      isFetchingFiles.value = false;
-    }
-  };
-
-  const init = () => {
-    fetchDirectory({ id: null, nama_folder: 'Beranda' });
-  };
-
-  const loadMoreFiles = async () => {
-    if (!explorerHasMore.value || isLoadingMore.value) return;
-    isLoadingMore.value = true;
-    const nextPage = explorerPage.value + 1;
-    const pId = currentFolder.value.id ? `parentId=${currentFolder.value.id}&` : '';
-    const searchParam = explorerSearchQuery.value
-      ? `search=${encodeURIComponent(explorerSearchQuery.value)}&`
-      : '';
-    try {
-      const res = await fetch(`/api/arsip/directory?${pId}${searchParam}page=${nextPage}&limit=50`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        folderFiles.value = [...folderFiles.value, ...data.files];
-        explorerPage.value = nextPage;
-        explorerHasMore.value = data.hasMore;
-      }
-    } catch (e) {
-      console.error('Load more failed', e);
-    } finally {
-      isLoadingMore.value = false;
-    }
-  };
-
-  const goBackToRoot = () => {
-    explorerSearchQuery.value = '';
-    fetchDirectory({ id: null, nama_folder: 'Beranda' });
-  };
-
-  const handleExplorerSearch = () => {
-    fetchDirectory(currentFolder.value);
-  };
-
-  const submitFolderForm = async () => {
-    if (!folderFormName.value) return;
-    const url =
-      folderModalType.value === 'create'
-        ? '/api/arsip/folders'
-        : `/api/arsip/folders/${activeFolderId.value}`;
-    const method = folderModalType.value === 'create' ? 'POST' : 'PUT';
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
-        },
-        body: JSON.stringify({ nama_folder: folderFormName.value, parent_id: currentFolder.value.id }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        if (folderModalType.value === 'create') {
-          explorerFolders.value.push({
-            id: data.id,
-            nama_folder: folderFormName.value,
-            parent_id: currentFolder.value.id,
-          });
-        } else {
-          const folder = explorerFolders.value.find((f) => f.id === activeFolderId.value);
-          if (folder) folder.nama_folder = folderFormName.value;
-        }
-
-        explorerFolders.value.sort((a, b) => a.nama_folder.localeCompare(b.nama_folder));
-
-        showFolderModal.value = false;
-        folderFormName.value = '';
-        activeFolderId.value = null;
-      } else {
-        toastError(data.message || 'Gagal menyimpan folder');
-      }
-    } catch (e) {
-      toastError('Terjadi kesalahan jaringan.');
-      console.error('Gagal simpan folder', e);
-    }
-  };
-
-  const openCreateFolderModal = () => {
-    folderModalType.value = 'create';
-    folderFormName.value = '';
-    showFolderModal.value = true;
-  };
-
-  const openRenameFolderModal = (folder, event) => {
-    if (event) event.stopPropagation();
-    folderModalType.value = 'rename';
-    folderFormName.value = folder.nama_folder;
-    activeFolderId.value = folder.id;
-    showFolderModal.value = true;
   };
 
   const onFolderRightClick = (event, folder) => {
@@ -436,10 +256,6 @@ export function useAdminExplorer() {
       targetType: 'file',
       item: file,
     };
-  };
-
-  const closeContextMenu = () => {
-    contextMenu.value.visible = false;
   };
 
   const handleContextRename = async () => {
@@ -567,31 +383,141 @@ export function useAdminExplorer() {
     closeContextMenu();
   };
 
-  const getFileIcon = (tipe, nama = '') => {
-    if (tipe === 'link') return '🔗';
-    const nameLower = nama.toLowerCase();
+  // ─── Directory Fetch ──────────────────────────────────────────────────────
+  const fetchDirectory = async (folderObj) => {
+    currentFolder.value = folderObj;
+    isFetchingFiles.value = true;
+    explorerPage.value = 1;
+    explorerHasMore.value = false;
+    explorerScrollTop.value = 0;
 
-    if (nameLower.endsWith('.zip') || nameLower.endsWith('.rar') || nameLower.endsWith('.7z')) return '📦';
-    if (nameLower.endsWith('.pdf') || (tipe && tipe.includes('pdf'))) return '📕';
-    if (nameLower.endsWith('.doc') || nameLower.endsWith('.docx') || (tipe && tipe.includes('word')))
-      return '📘';
-    if (
-      nameLower.endsWith('.xls') ||
-      nameLower.endsWith('.xlsx') ||
-      (tipe && (tipe.includes('excel') || tipe.includes('spreadsheet')))
-    )
-      return '📗';
-    if (
-      nameLower.endsWith('.ppt') ||
-      nameLower.endsWith('.pptx') ||
-      (tipe && tipe.includes('presentation'))
-    )
-      return '📙';
-    if (tipe && tipe.includes('image')) return '🖼️';
-    if (tipe && tipe.includes('video')) return '🎬';
-    return '📄';
+    const stackIndex = folderStack.value.findIndex((f) => f.id === folderObj.id);
+    if (stackIndex > -1) {
+      folderStack.value = folderStack.value.slice(0, stackIndex + 1);
+    } else {
+      folderStack.value.push(folderObj);
+    }
+
+    const pId = folderObj.id ? `?parentId=${folderObj.id}&page=1&limit=50` : '?page=1&limit=50';
+    const searchParam = explorerSearchQuery.value
+      ? `&search=${encodeURIComponent(explorerSearchQuery.value)}`
+      : '';
+    try {
+      const res = await fetch(`/api/arsip/directory${pId}${searchParam}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        explorerFolders.value = data.folders;
+        folderFiles.value = data.files;
+        explorerHasMore.value = data.hasMore;
+      }
+    } catch (e) {
+      console.error('Gagal ambil direktori', e);
+    } finally {
+      isFetchingFiles.value = false;
+    }
   };
 
+  const init = () => {
+    fetchDirectory({ id: null, nama_folder: 'Beranda' });
+  };
+
+  const loadMoreFiles = async () => {
+    if (!explorerHasMore.value || isLoadingMore.value) return;
+    isLoadingMore.value = true;
+    const nextPage = explorerPage.value + 1;
+    const pId = currentFolder.value.id ? `parentId=${currentFolder.value.id}&` : '';
+    const searchParam = explorerSearchQuery.value
+      ? `search=${encodeURIComponent(explorerSearchQuery.value)}&`
+      : '';
+    try {
+      const res = await fetch(`/api/arsip/directory?${pId}${searchParam}page=${nextPage}&limit=50`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        folderFiles.value = [...folderFiles.value, ...data.files];
+        explorerPage.value = nextPage;
+        explorerHasMore.value = data.hasMore;
+      }
+    } catch (e) {
+      console.error('Load more failed', e);
+    } finally {
+      isLoadingMore.value = false;
+    }
+  };
+
+  const goBackToRoot = () => {
+    explorerSearchQuery.value = '';
+    fetchDirectory({ id: null, nama_folder: 'Beranda' });
+  };
+
+  const handleExplorerSearch = () => {
+    fetchDirectory(currentFolder.value);
+  };
+
+  // ─── Folder CRUD ──────────────────────────────────────────────────────────
+  const submitFolderForm = async () => {
+    if (!folderFormName.value) return;
+    const url =
+      folderModalType.value === 'create'
+        ? '/api/arsip/folders'
+        : `/api/arsip/folders/${activeFolderId.value}`;
+    const method = folderModalType.value === 'create' ? 'POST' : 'PUT';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ nama_folder: folderFormName.value, parent_id: currentFolder.value.id }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        if (folderModalType.value === 'create') {
+          explorerFolders.value.push({
+            id: data.id,
+            nama_folder: folderFormName.value,
+            parent_id: currentFolder.value.id,
+          });
+        } else {
+          const folder = explorerFolders.value.find((f) => f.id === activeFolderId.value);
+          if (folder) folder.nama_folder = folderFormName.value;
+        }
+
+        explorerFolders.value.sort((a, b) => a.nama_folder.localeCompare(b.nama_folder));
+
+        showFolderModal.value = false;
+        folderFormName.value = '';
+        activeFolderId.value = null;
+      } else {
+        toastError(data.message || 'Gagal menyimpan folder');
+      }
+    } catch (e) {
+      toastError('Terjadi kesalahan jaringan.');
+      console.error('Gagal simpan folder', e);
+    }
+  };
+
+  const openCreateFolderModal = () => {
+    folderModalType.value = 'create';
+    folderFormName.value = '';
+    showFolderModal.value = true;
+  };
+
+  const openRenameFolderModal = (folder, event) => {
+    if (event) event.stopPropagation();
+    folderModalType.value = 'rename';
+    folderFormName.value = folder.nama_folder;
+    activeFolderId.value = folder.id;
+    showFolderModal.value = true;
+  };
+
+  // ─── Upload ───────────────────────────────────────────────────────────────
   const handleFileSelect = (e) => {
     selectedUploadFile.value = Array.from(e.target.files);
   };
@@ -679,6 +605,7 @@ export function useAdminExplorer() {
     isUploading.value = false;
   };
 
+  // ─── Preview & Download ───────────────────────────────────────────────────
   const openPreview = (fileObj) => {
     if (fileObj.tipe_file === 'link') {
       window.open(fileObj.url_file, '_blank');
@@ -698,17 +625,7 @@ export function useAdminExplorer() {
 
   const downloadOriginal = async (fileObj) => {
     try {
-      const response = await fetch(fileObj.url_file);
-      if (!response.ok) throw new Error('Gagal mengunduh file.');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileObj.nama_file;
-      document.body.appendChild(link);
-      link.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(link);
+      await downloadBlob(fileObj.url_file, fileObj.nama_file);
     } catch (error) {
       toastError('Gagal mengunduh file.');
     }
@@ -787,8 +704,20 @@ export function useAdminExplorer() {
   };
 
   return {
+    // ─── Dari base ───────────────────────────────────────────
     selectedItems,
     lastSelectedId,
+    explorerScrollTop,
+    virtualFiles,
+    spacerTop,
+    spacerBottom,
+    contextMenu,
+    previewFile,
+    showPreviewModal,
+    isSelected,
+    clearSelection,
+    closeContextMenu,
+    // ─── Local state ─────────────────────────────────────────
     viewMode,
     isDragging,
     isCompressing,
@@ -807,10 +736,6 @@ export function useAdminExplorer() {
     explorerPage,
     explorerHasMore,
     isLoadingMore,
-    explorerScrollTop,
-    virtualFiles,
-    spacerTop,
-    spacerBottom,
     clipboard,
     showUploadModal,
     uploadError,
@@ -823,13 +748,9 @@ export function useAdminExplorer() {
     folderModalType,
     folderFormName,
     activeFolderId,
-    contextMenu,
-    previewFile,
-    showPreviewModal,
     explorerSearchQuery,
-    isSelected,
+    // ─── Methods ─────────────────────────────────────────────
     toggleSelection,
-    clearSelection,
     handleDragOver,
     handleDragLeave,
     handleDrop,
@@ -848,7 +769,6 @@ export function useAdminExplorer() {
     openRenameFolderModal,
     onFolderRightClick,
     onFileRightClick,
-    closeContextMenu,
     handleContextRename,
     handleCutCopy,
     handlePaste,

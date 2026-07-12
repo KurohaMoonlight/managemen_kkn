@@ -1,14 +1,26 @@
 import { ref, computed } from 'vue';
 import { useToast } from '../useNotification.js';
+import { useBaseExplorer } from '../useBaseExplorer.js';
+import { getFileIcon, downloadBlob } from '../../utils/fileHelpers.js';
 
 export function useSuperAdminExplorer(token) {
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
 
-  // ─── View State ───────────────────────────────────────────────────────────────
+  // ─── Gunakan base composable (virtual scroll, selection, context menu, preview) ──
+  const base = useBaseExplorer();
+
+  const {
+    explorerScrollTop, folderFiles, virtualFiles, spacerTop, spacerBottom,
+    selectedItems, isSelected, clearSelection,
+    contextMenu, closeContextMenu,
+    previewFile, showPreviewModal,
+  } = base;
+
+  // ─── View State ───────────────────────────────────────────────────────────
   const explorerView = ref('cluster'); // 'cluster' | 'explorer'
   const activePosko = ref(null);
 
-  // ─── Cluster State ────────────────────────────────────────────────────────────
+  // ─── Cluster State ────────────────────────────────────────────────────────
   const poskoList = ref([]);
   const poskoLoading = ref(false);
   const poskoSearchQuery = ref('');
@@ -19,9 +31,8 @@ export function useSuperAdminExplorer(token) {
     return poskoList.value.filter(p => p.nama_posko.toLowerCase().includes(q));
   });
 
-  // ─── Explorer State ───────────────────────────────────────────────────────────
+  // ─── Explorer State ───────────────────────────────────────────────────────
   const explorerFolders = ref([]);
-  const folderFiles = ref([]);
   const currentFolder = ref({ id: null, nama_folder: 'Beranda' });
   const folderStack = ref([]);
   const isFetchingFiles = ref(false);
@@ -30,41 +41,8 @@ export function useSuperAdminExplorer(token) {
   const isLoadingMore = ref(false);
   const viewMode = ref('grid');
   const explorerSearchQuery = ref('');
-  const selectedItems = ref(new Set());
-  const previewFile = ref(null);
-  const showPreviewModal = ref(false);
 
-  // ─── Virtual Scroll (Cluster+ID) ─────────────────────────────────────────────
-  const ITEM_HEIGHT = 120;
-  const COLS = 5;
-  const VISIBLE_ROWS = 4;
-  const explorerScrollTop = ref(0);
-
-  const visibleStartIndex = computed(() =>
-    Math.max(0, Math.floor(explorerScrollTop.value / ITEM_HEIGHT) * COLS - COLS)
-  );
-  const visibleEndIndex = computed(() =>
-    visibleStartIndex.value + (VISIBLE_ROWS + 2) * COLS
-  );
-  const virtualFiles = computed(() =>
-    folderFiles.value.slice(visibleStartIndex.value, visibleEndIndex.value)
-  );
-  const spacerTop = computed(() =>
-    Math.floor(visibleStartIndex.value / COLS) * ITEM_HEIGHT + 'px'
-  );
-  const spacerBottom = computed(() => {
-    const totalRows = Math.ceil(folderFiles.value.length / COLS);
-    const endRow = Math.ceil(visibleEndIndex.value / COLS);
-    return Math.max(0, totalRows - endRow) * ITEM_HEIGHT + 'px';
-  });
-
-  // ─── Context Menu ─────────────────────────────────────────────────────────────
-  const contextMenu = ref({ visible: false, x: 0, y: 0, targetType: null, item: null });
-  const closeContextMenu = () => { contextMenu.value.visible = false; };
-  const isSelected = (type, id) => selectedItems.value.has(type + '-' + id);
-  const clearSelection = () => selectedItems.value.clear();
-
-  // ─── Cluster: Fetch All Posko ─────────────────────────────────────────────────
+  // ─── Cluster: Fetch All Posko ─────────────────────────────────────────────
   const fetchPoskoList = async () => {
     poskoLoading.value = true;
     try {
@@ -79,7 +57,7 @@ export function useSuperAdminExplorer(token) {
     }
   };
 
-  // ─── Enter Explorer for a Posko ───────────────────────────────────────────────
+  // ─── Enter Explorer for a Posko ───────────────────────────────────────────
   const enterPosko = async (posko) => {
     activePosko.value = posko;
     explorerView.value = 'explorer';
@@ -98,7 +76,7 @@ export function useSuperAdminExplorer(token) {
     clearSelection();
   };
 
-  // ─── Explorer: Fetch Directory ────────────────────────────────────────────────
+  // ─── Explorer: Fetch Directory ────────────────────────────────────────────
   const fetchDirectory = async (folderObj) => {
     currentFolder.value = folderObj;
     isFetchingFiles.value = true;
@@ -139,7 +117,7 @@ export function useSuperAdminExplorer(token) {
     }
   };
 
-  // ─── Lazy Load More Files ─────────────────────────────────────────────────────
+  // ─── Lazy Load More Files ─────────────────────────────────────────────────
   const loadMoreFiles = async () => {
     if (!explorerHasMore.value || isLoadingMore.value) return;
     isLoadingMore.value = true;
@@ -170,21 +148,7 @@ export function useSuperAdminExplorer(token) {
 
   const handleExplorerSearch = () => fetchDirectory(currentFolder.value);
 
-  // ─── File Icons ───────────────────────────────────────────────────────────────
-  const getFileIcon = (tipe, nama = '') => {
-    if (tipe === 'link') return '🔗';
-    const n = nama.toLowerCase();
-    if (n.endsWith('.zip') || n.endsWith('.rar') || n.endsWith('.7z')) return '📦';
-    if (n.endsWith('.pdf') || (tipe && tipe.includes('pdf'))) return '📕';
-    if (n.endsWith('.doc') || n.endsWith('.docx') || (tipe && tipe.includes('word'))) return '📘';
-    if (n.endsWith('.xls') || n.endsWith('.xlsx') || (tipe && (tipe.includes('excel') || tipe.includes('spreadsheet')))) return '📗';
-    if (n.endsWith('.ppt') || n.endsWith('.pptx') || (tipe && tipe.includes('presentation'))) return '📙';
-    if (tipe && tipe.includes('image')) return '🖼️';
-    if (tipe && tipe.includes('video')) return '🎬';
-    return '📄';
-  };
-
-  // ─── Preview ──────────────────────────────────────────────────────────────────
+  // ─── Preview & Download ───────────────────────────────────────────────────
   const openPreview = (fileObj) => {
     if (fileObj.tipe_file === 'link') { window.open(fileObj.url_file, '_blank'); return; }
     if (!fileObj.tipe_file.includes('image') && !fileObj.tipe_file.includes('video') && !fileObj.tipe_file.includes('pdf')) {
@@ -195,23 +159,14 @@ export function useSuperAdminExplorer(token) {
     }
   };
 
-  // ─── Download Single File ─────────────────────────────────────────────────────
   const downloadFile = async (fileObj) => {
     try {
-      const response = await fetch(fileObj.url_file);
-      if (!response.ok) throw new Error('Gagal mengunduh file.');
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url; link.download = fileObj.nama_file;
-      document.body.appendChild(link); link.click();
-      window.URL.revokeObjectURL(url); document.body.removeChild(link);
+      await downloadBlob(fileObj.url_file, fileObj.nama_file);
     } catch (error) {
       toastError('Gagal mengunduh file.');
     }
   };
 
-  // ─── Download Folder as ZIP ───────────────────────────────────────────────────
   const downloadFolderZip = async (folderId, folderName) => {
     toastInfo(`Mempersiapkan ZIP untuk folder "${folderName}"...`);
     try {
@@ -231,7 +186,6 @@ export function useSuperAdminExplorer(token) {
     }
   };
 
-  // ─── Download All Files of a Posko as ZIP ────────────────────────────────────
   const downloadPoskoZip = async (posko) => {
     const target = posko || activePosko.value;
     if (!target) return;
@@ -256,7 +210,7 @@ export function useSuperAdminExplorer(token) {
     }
   };
 
-  // ─── Context Menu (Read-Only: Preview & Download) ─────────────────────────────
+  // ─── Context Menu (Read-Only: Preview & Download) ─────────────────────────
   const onFileRightClick = (event, file) => {
     clearSelection();
     selectedItems.value.add('file-' + file.id);
@@ -272,13 +226,18 @@ export function useSuperAdminExplorer(token) {
   const init = () => fetchPoskoList();
 
   return {
+    // ─── Dari base ───────────────────────────────────────────
+    explorerScrollTop, virtualFiles, spacerTop, spacerBottom,
+    selectedItems, isSelected, clearSelection,
+    contextMenu, closeContextMenu,
+    previewFile, showPreviewModal,
+    // ─── Local state ─────────────────────────────────────────
     explorerView, activePosko,
     poskoList, poskoLoading, poskoSearchQuery, filteredPoskoList,
     explorerFolders, folderFiles, currentFolder, folderStack,
     isFetchingFiles, explorerPage, explorerHasMore, isLoadingMore,
-    viewMode, explorerSearchQuery, selectedItems, previewFile, showPreviewModal,
-    explorerScrollTop, virtualFiles, spacerTop, spacerBottom,
-    contextMenu, isSelected, clearSelection,
+    viewMode, explorerSearchQuery,
+    // ─── Methods ─────────────────────────────────────────────
     init, fetchPoskoList, enterPosko, backToCluster,
     fetchDirectory, loadMoreFiles, handleExplorerSearch,
     getFileIcon, openPreview, downloadFile, downloadFolderZip, downloadPoskoZip,
