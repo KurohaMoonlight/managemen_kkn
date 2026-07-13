@@ -396,11 +396,15 @@ const getExecutablePath = () => {
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
   ];
   for (const p of paths) {
     if (fs.existsSync(p)) return p;
   }
-  throw new Error('Chrome atau Edge tidak ditemukan di sistem Windows ini.');
+  throw new Error('Chrome/Chromium/Edge tidak ditemukan di sistem ini (Baik Windows maupun Linux). Pastikan browser terinstal.');
 };
 
 let sharedBrowser = null;
