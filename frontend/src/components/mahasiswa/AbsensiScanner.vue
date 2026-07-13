@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { Html5Qrcode } from 'html5-qrcode';
 
 const props = defineProps({
@@ -48,6 +48,7 @@ const tickCountdown = () => {
 };
 
 const startCountdown = () => {
+  if (countdownInterval) clearInterval(countdownInterval);
   tickCountdown();
   countdownInterval = setInterval(tickCountdown, 1000);
 };
@@ -55,6 +56,14 @@ const startCountdown = () => {
 onMounted(() => {
   if (props.hasCheckedInToday) {
     startCountdown();
+  }
+});
+
+watch(() => props.hasCheckedInToday, (newVal) => {
+  if (newVal) {
+    startCountdown();
+  } else {
+    if (countdownInterval) clearInterval(countdownInterval);
   }
 });
 

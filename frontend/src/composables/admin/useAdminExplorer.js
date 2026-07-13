@@ -483,6 +483,7 @@ export function useAdminExplorer() {
             id: data.id,
             nama_folder: folderFormName.value,
             parent_id: currentFolder.value.id,
+            created_at: new Date().toISOString(),
           });
         } else {
           const folder = explorerFolders.value.find((f) => f.id === activeFolderId.value);

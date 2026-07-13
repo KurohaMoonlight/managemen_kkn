@@ -268,6 +268,9 @@ const {
   border-radius: 8px;
   border: 1px solid var(--color-border);
   padding: 0.25rem 0.25rem 0.25rem 1rem;
+  flex: 1;
+  max-width: 100%;
+  min-width: 200px;
 }
 
 .search-box input {
@@ -275,7 +278,9 @@ const {
   border: none;
   color: var(--text-main);
   outline: none;
-  width: 250px;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 
 .table-responsive {
