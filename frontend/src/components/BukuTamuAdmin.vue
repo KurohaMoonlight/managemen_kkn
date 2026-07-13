@@ -318,7 +318,7 @@ watch(showForm, async (newVal) => {
             <td style="padding: 1rem; font-size: 0.9rem;">{{ t.keperluan }}</td>
             <td style="padding: 1rem; color: var(--color-primary);">{{ t.nama_penyambut || '-' }}</td>
             <td style="padding: 1rem; text-align: center;">
-              <img v-if="t.ttd_tamu_url" :src="'http://localhost:5000' + t.ttd_tamu_url" style="height: 40px; max-width: 80px; object-fit: contain;" />
+              <img v-if="t.ttd_tamu_url" :src="t.ttd_tamu_url" style="height: 40px; max-width: 80px; object-fit: contain;" />
             </td>
             <td style="padding: 1rem; text-align: center;">
               <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" @click="editTamu(t)">✏️ Edit</button>
@@ -473,7 +473,7 @@ watch(showForm, async (newVal) => {
                 <td style="border: 1px solid black; padding: 8px;">{{ t.keperluan }}</td>
                 <td style="border: 1px solid black; padding: 8px; text-align: center;">{{ t.nama_penyambut || '-' }}</td>
                 <td style="border: 1px solid black; padding: 2px; text-align: center; vertical-align: middle; height: 50px;">
-                  <img v-if="t.ttd_tamu_url" :src="'http://localhost:5000' + t.ttd_tamu_url" style="max-height: 45px; max-width: 60px;" />
+                  <img v-if="t.ttd_tamu_url" :src="t.ttd_tamu_url" style="max-height: 45px; max-width: 60px;" />
                 </td>
               </tr>
               <tr v-if="chunk.length === 0">

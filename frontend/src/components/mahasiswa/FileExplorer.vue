@@ -397,7 +397,7 @@ defineExpose({ refresh: () => {
         v-for="file in explorerFiles"
         :key="file.id"
         @click.stop="handleItemClick($event, 'file', file.id)"
-        @dblclick.stop="file.tipe_file.includes('image') ? previewImageUrl = 'http://localhost:5000' + file.url_file : window.open('http://localhost:5000' + file.url_file, '_blank')"
+        @dblclick.stop="file.tipe_file.includes('image') ? previewImageUrl = file.url_file : window.open(file.url_file, '_blank')"
         @contextmenu.stop="onRightClick($event, file, 'file')"
         class="explorer-item"
         :class="{ 'explorer-item--selected': isSelected('file', file.id) }"

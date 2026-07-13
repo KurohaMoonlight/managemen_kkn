@@ -172,7 +172,7 @@ const generatePDF = async () => {
               <strong>Peserta:</strong> {{ log.sasaran || '-' }}
             </td>
             <td style="border: 1px solid black; padding: 6px; text-align: center; vertical-align: top;">
-               <img v-if="getFirstImage(log.photos)" :src="'http://localhost:5000' + getFirstImage(log.photos)" style="max-width: 90px; max-height: 90px; object-fit: cover;" crossorigin="anonymous" />
+               <img v-if="getFirstImage(log.photos)" :src="getFirstImage(log.photos)" style="max-width: 90px; max-height: 90px; object-fit: cover;" crossorigin="anonymous" />
             </td>
           </tr>
         </tbody>
