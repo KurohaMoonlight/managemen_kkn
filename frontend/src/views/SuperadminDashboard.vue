@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 
 // ─── Tab Components ───────────────────────────────────────────────────────
@@ -123,6 +123,7 @@ const logout = () => {
 
 const switchTab = async (tab) => {
   activeTab.value = tab;
+  await nextTick();
   if (tab === 'absensi' && absensiRef.value) await absensiRef.value.fetchAbsensi();
   if (tab === 'reset' && resetRef.value) await resetRef.value.fetchResetRequests();
   if (tab === 'users' && usersRef.value) await usersRef.value.fetchUsers();
