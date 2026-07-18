@@ -26,20 +26,22 @@ export const getSuratPreviewHtml = (s, userValue) => {
   const logoKiri = data.logo_kiri || '';
   const logoKanan = data.logo_kanan || '';
   
-  const sizeKiri = data.logo_kiri_size || 70;
-  const sizeKanan = data.logo_kanan_size || 70;
+  const widthKiri = data.logo_kiri_width || 70;
+  const heightKiri = data.logo_kiri_height || 70;
+  const widthKanan = data.logo_kanan_width || 70;
+  const heightKanan = data.logo_kanan_height || 70;
 
   const getAbsoluteUrl = (url) => url && !url.startsWith('http') && !url.startsWith('data:') ? window.location.origin + url : url;
   const absLogoKiri = getAbsoluteUrl(logoKiri);
   const absLogoKanan = getAbsoluteUrl(logoKanan);
 
   const logoKiriHtml = logoKiri
-    ? `<img src="${absLogoKiri}" crossorigin="anonymous" style="width: ${sizeKiri}px; height: ${sizeKiri}px; object-fit: contain; display: block;" />`
-    : `<div style="width: ${sizeKiri}px; height: ${sizeKiri}px;"></div>`;
+    ? `<img src="${absLogoKiri}" crossorigin="anonymous" style="width: ${widthKiri}px; height: ${heightKiri}px; object-fit: contain; display: block;" />`
+    : `<div style="width: ${widthKiri}px; height: ${heightKiri}px;"></div>`;
 
   const logoKananHtml = logoKanan
-    ? `<img src="${absLogoKanan}" crossorigin="anonymous" style="width: ${sizeKanan}px; height: ${sizeKanan}px; object-fit: contain; display: block;" />`
-    : `<div style="width: ${sizeKanan}px; height: ${sizeKanan}px;"></div>`;
+    ? `<img src="${absLogoKanan}" crossorigin="anonymous" style="width: ${widthKanan}px; height: ${heightKanan}px; object-fit: contain; display: block;" />`
+    : `<div style="width: ${widthKanan}px; height: ${heightKanan}px;"></div>`;
 
   content += `
     <div style="border-bottom: 3px solid black; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">

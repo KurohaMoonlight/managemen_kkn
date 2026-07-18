@@ -201,22 +201,17 @@ const defaultKop = {
   alamat_sekretariat: 'Jl. Raya Desa Contoh No. 123, Kab. Contoh, Prov. Contoh',
   logo_kiri: '',
   logo_kanan: '',
-  logo_kiri_size: 70,
-  logo_kanan_size: 70,
-  chain_logo_size: true
+  logo_kiri_width: 70,
+  logo_kiri_height: 70,
+  logo_kanan_width: 70,
+  logo_kanan_height: 70
 };
 // Merge defaults (pastikan tipe data angka)
 kopSettings.value = { ...defaultKop, ...kopSettings.value };
-kopSettings.value.logo_kiri_size = Number(kopSettings.value.logo_kiri_size) || 70;
-kopSettings.value.logo_kanan_size = Number(kopSettings.value.logo_kanan_size) || 70;
-
-// Watcher untuk sinkronisasi ukuran logo jika di-chain
-watch(() => kopSettings.value.logo_kiri_size, (newVal) => {
-  if (kopSettings.value.chain_logo_size) kopSettings.value.logo_kanan_size = newVal;
-});
-watch(() => kopSettings.value.logo_kanan_size, (newVal) => {
-  if (kopSettings.value.chain_logo_size) kopSettings.value.logo_kiri_size = newVal;
-});
+kopSettings.value.logo_kiri_width = Number(kopSettings.value.logo_kiri_width) || 70;
+kopSettings.value.logo_kiri_height = Number(kopSettings.value.logo_kiri_height) || 70;
+kopSettings.value.logo_kanan_width = Number(kopSettings.value.logo_kanan_width) || 70;
+kopSettings.value.logo_kanan_height = Number(kopSettings.value.logo_kanan_height) || 70;
 
 const poskoId = user.value?.posko_id || 'default';
 const LOGO_HISTORY_KEY = `kkn_logo_history_${poskoId}`;
@@ -969,23 +964,33 @@ onMounted(() => {
 
               </div>
 
-              <!-- Slider Ukuran Logo -->
-              <div class="sg-logo-size-controls" style="margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
-                  <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">📏 Ukuran Logo</span>
-                  <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor: pointer; color: var(--color-primary); font-weight: 600;">
-                    <input type="checkbox" v-model="kopSettings.chain_logo_size" />
-                    🔗 Samakan Kiri Kanan
-                  </label>
+              <!-- Input Ukuran Logo -->
+              <div style="background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">📏 Ukuran Logo Kiri (px)</span>
+                </div>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                  <div style="flex: 1; min-width: 150px;">
+                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Lebar / Width</label>
+                    <input type="number" v-model="kopSettings.logo_kiri_width" class="sg-input" style="width: 100%;" min="10" />
+                  </div>
+                  <div style="flex: 1; min-width: 150px;">
+                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Tinggi / Height</label>
+                    <input type="number" v-model="kopSettings.logo_kiri_height" class="sg-input" style="width: 100%;" min="10" />
+                  </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">📏 Ukuran Logo Kanan (px)</span>
                 </div>
                 <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                   <div style="flex: 1; min-width: 150px;">
-                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Logo Kiri ({{ kopSettings.logo_kiri_size }}px)</label>
-                    <input type="range" v-model="kopSettings.logo_kiri_size" min="40" max="150" style="width: 100%;" />
+                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Lebar / Width</label>
+                    <input type="number" v-model="kopSettings.logo_kanan_width" class="sg-input" style="width: 100%;" min="10" />
                   </div>
                   <div style="flex: 1; min-width: 150px;">
-                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Logo Kanan ({{ kopSettings.logo_kanan_size }}px)</label>
-                    <input type="range" v-model="kopSettings.logo_kanan_size" min="40" max="150" :disabled="kopSettings.chain_logo_size" style="width: 100%;" :style="{ opacity: kopSettings.chain_logo_size ? 0.5 : 1, cursor: kopSettings.chain_logo_size ? 'not-allowed' : 'pointer' }" />
+                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Tinggi / Height</label>
+                    <input type="number" v-model="kopSettings.logo_kanan_height" class="sg-input" style="width: 100%;" min="10" />
                   </div>
                 </div>
               </div>
