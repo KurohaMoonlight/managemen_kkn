@@ -156,7 +156,7 @@ const generatePDF = async () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(log, index) in rekapData.logbooks" :key="log.id">
+          <tr v-for="(log, index) in rekapData.logbooks" :key="log.id" style="page-break-inside: avoid; break-inside: avoid;">
             <td style="border: 1px solid black; padding: 6px; text-align: center; vertical-align: top;">{{ index + 1 }}</td>
             <td style="border: 1px solid black; padding: 6px; vertical-align: top; white-space: pre-line;">{{ formatTanggal(log.tanggal) }}</td>
             <td style="border: 1px solid black; padding: 6px; vertical-align: top;">
