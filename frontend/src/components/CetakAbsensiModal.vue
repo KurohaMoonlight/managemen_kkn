@@ -269,18 +269,20 @@ const generatePDF = async () => {
         </h2>
         
         <table style="width: 100%; max-width: 600px; margin-bottom: 20px; border: none; font-size: 11pt;">
-        <tr>
-          <td style="width: 100px; border: none; padding: 4px;">Desa</td>
-          <td style="border: none; padding: 4px;">: {{ desa || '........................' }} &nbsp;&nbsp;&nbsp; Kec./Kab. : {{ kecamatanKabupaten || '........................' }} / {{ kecamatanKabupaten || '........................' }}</td>
-        </tr>
-        <tr>
-          <td style="border: none; padding: 4px;">Kordes</td>
-          <td style="border: none; padding: 4px;">: {{ kordesNama || '........................' }} / NIM. {{ kordesNim || '........' }}</td>
-        </tr>
-        <tr>
-          <td style="border: none; padding: 4px;">DPL</td>
-          <td style="border: none; padding: 4px;">: {{ dplNama || '........................' }} / NIDN. {{ dplNidn || '........' }}</td>
-        </tr>
+        <tbody>
+          <tr>
+            <td style="width: 100px; border: none; padding: 4px;">Desa</td>
+            <td style="border: none; padding: 4px;">: {{ desa || '........................' }} &nbsp;&nbsp;&nbsp; Kec./Kab. : {{ kecamatanKabupaten || '........................' }} / {{ kecamatanKabupaten || '........................' }}</td>
+          </tr>
+          <tr>
+            <td style="border: none; padding: 4px;">Kordes</td>
+            <td style="border: none; padding: 4px;">: {{ kordesNama || '........................' }} / NIM. {{ kordesNim || '........' }}</td>
+          </tr>
+          <tr>
+            <td style="border: none; padding: 4px;">DPL</td>
+            <td style="border: none; padding: 4px;">: {{ dplNama || '........................' }} / NIDN. {{ dplNidn || '........' }}</td>
+          </tr>
+        </tbody>
       </table>
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 11pt;">
