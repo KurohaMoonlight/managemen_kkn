@@ -21,14 +21,14 @@ const view = ref('list');
 
 // ─── LIST STATE ──────────────────────────────────────────────────────────────
 const suratList = ref([]);
-const activeTab = ref(isSekreOrKordes.value ? 'draft' : 'complete');
+const activeTab = ref(isSekreOrKordes.value ? 'draft' : 'selesai');
 const searchQuery = ref('');
 const isListLoading = ref(false);
 
 const filteredList = computed(() => {
   return suratList.value
     .filter(s => {
-      if (!isSekreOrKordes.value && s.status !== 'complete') return false;
+      if (!isSekreOrKordes.value && s.status !== 'selesai') return false;
       return s.status === activeTab.value;
     })
     .filter(s => {
@@ -491,7 +491,7 @@ const saveSurat = async (status) => {
       }
     }
     if (res.ok) {
-      if (status === 'complete') {
+      if (status === 'selesai') {
         toastSuccess('Surat berhasil disimpan sebagai final!');
         backToList();
       } else {
@@ -694,12 +694,12 @@ onMounted(() => {
               </span>
             </button>
             <button
-              :class="['sg-tab', activeTab === 'complete' && 'sg-tab--active']"
-              @click="activeTab = 'complete'"
+              :class="['sg-tab', activeTab === 'selesai' && 'sg-tab--active']"
+              @click="activeTab = 'selesai'"
             >
-              Selesai
-              <span v-if="suratList.filter(s => s.status === 'complete').length" class="tab-badge">
-                {{ suratList.filter(s => s.status === 'complete').length }}
+              Surat Selesai
+              <span v-if="suratList.filter(s => s.status === 'selesai').length" class="tab-badge">
+                {{ suratList.filter(s => s.status === 'selesai').length }}
               </span>
             </button>
           </div>
@@ -758,9 +758,9 @@ onMounted(() => {
 
         <!-- Stats footer -->
         <div class="sg-stats" v-if="!isListLoading">
-          <span>Total: <b>{{ suratList.filter(s => isSekreOrKordes || s.status === 'complete').length }}</b> surat</span>
+          <span>Total: <b>{{ suratList.filter(s => isSekreOrKordes || s.status === 'selesai').length }}</b> surat</span>
           <span v-if="isSekreOrKordes">Draft: <b>{{ suratList.filter(s=>s.status==='draft').length }}</b></span>
-          <span>Selesai: <b>{{ suratList.filter(s=>s.status==='complete').length }}</b></span>
+          <span>Selesai: <b>{{ suratList.filter(s=>s.status==='selesai').length }}</b></span>
         </div>
       </div>
     </div>
@@ -775,12 +775,12 @@ onMounted(() => {
       >
         <template v-if="isSekreOrKordes">
           <button @click="closeContextMenu(); openExistingEditor(contextMenu.surat)" class="context-menu-item" :disabled="isLoadingEditor">✏️ Edit Surat</button>
-          <button v-if="contextMenu.surat && contextMenu.surat.status === 'complete'" @click="downloadSuratPdf(contextMenu.surat); closeContextMenu()" class="context-menu-item">⬇️ Unduh PDF</button>
+          <button v-if="contextMenu.surat && contextMenu.surat.status === 'selesai'" @click="downloadSuratPdf(contextMenu.surat); closeContextMenu()" class="context-menu-item">⬇️ Unduh PDF</button>
           <button @click="deleteSurat(contextMenu.surat.id); closeContextMenu()" class="context-menu-item context-menu-item--danger">🗑️ Hapus</button>
         </template>
         <template v-else>
-          <button v-if="contextMenu.surat && contextMenu.surat.status === 'complete'" @click="downloadSuratPdf(contextMenu.surat); closeContextMenu()" class="context-menu-item">⬇️ Unduh PDF</button>
-          <button v-if="contextMenu.surat && contextMenu.surat.status === 'complete'" @click="printSuratDirect(contextMenu.surat); closeContextMenu()" class="context-menu-item">🖨️ Cetak</button>
+          <button v-if="contextMenu.surat && contextMenu.surat.status === 'selesai'" @click="downloadSuratPdf(contextMenu.surat); closeContextMenu()" class="context-menu-item">⬇️ Unduh PDF</button>
+          <button v-if="contextMenu.surat && contextMenu.surat.status === 'selesai'" @click="printSuratDirect(contextMenu.surat); closeContextMenu()" class="context-menu-item">🖨️ Cetak</button>
         </template>
       </div>
     </Teleport>
@@ -861,7 +861,7 @@ onMounted(() => {
           <button @click="saveSurat('draft')" :disabled="isSaving" class="btn-draft">
             {{ isSaving ? '⏳ Menyimpan...' : '💾 Simpan sebagai Draft' }}
           </button>
-          <button @click="saveSurat('complete')" :disabled="isSaving" class="btn-final">
+          <button @click="saveSurat('selesai')" :disabled="isSaving" class="btn-final">
             ✅ Simpan Final
           </button>
         </div>

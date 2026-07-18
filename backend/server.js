@@ -2811,9 +2811,9 @@ app.get('/api/sekretaris/surat', authenticateToken, async (req, res) => {
     `;
     const params = [req.user.posko_id];
     
-    // Mahasiswa biasa hanya bisa melihat surat yang sudah complete
+    // Mahasiswa biasa hanya bisa melihat surat yang sudah selesai
     if (req.user.jabatan?.toLowerCase() !== 'sekretaris' && req.user.role !== 'admin') {
-      query += ` AND s.status = 'complete'`;
+      query += ` AND s.status = 'selesai'`;
     }
     
     query += ` ORDER BY s.created_at DESC`;
