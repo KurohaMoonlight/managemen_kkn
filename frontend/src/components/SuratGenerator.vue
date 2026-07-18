@@ -1967,6 +1967,175 @@ onMounted(() => {
   color: #dc2626;
 }
 
+/* ─── LOGO PICKER ──────────────────────────────────────── */
+.sg-logo-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.sg-logo-slot {
+  flex: 1;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.sg-logo-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.sg-logo-trigger {
+  width: 100%;
+  cursor: pointer;
+}
+
+.sg-logo-preview {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.sg-logo-img {
+  max-width: 80px;
+  max-height: 80px;
+  object-fit: contain;
+}
+
+.sg-logo-remove {
+  position: absolute;
+  top: -5px;
+  right: 10px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+}
+
+.sg-logo-upload-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.sg-logo-upload-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.sg-logo-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: white;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  border-radius: 8px;
+  z-index: 50;
+  padding: 1rem;
+  margin-top: 0.5rem;
+}
+
+.sg-logo-picker-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+
+.sg-logo-picker-empty {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.sg-logo-history-grid {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sg-logo-history-item {
+  position: relative;
+  width: 45px;
+  height: 45px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.sg-logo-history-item--active {
+  border-color: var(--color-primary);
+  background: #eef2ff;
+}
+
+.sg-logo-history-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.sg-logo-history-del {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 0.6rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sg-logo-picker-upload {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px dashed #cbd5e1;
+}
+
+.sg-logo-picker-upload:hover {
+  background: #f1f5f9;
+}
+
 @media (max-width: 768px) {
   .sg-split { flex-direction: column; }
   .sg-form-pane { width: 100%; border-right: none; border-bottom: 1px solid #e2e8f0; max-height: 60vh; }
