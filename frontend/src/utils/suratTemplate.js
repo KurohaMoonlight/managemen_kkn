@@ -23,12 +23,26 @@ export const getSuratPreviewHtml = (s, userValue) => {
   const desa = data.nama_desa || 'DESA CONTOH';
   const kecamatan = data.nama_kecamatan || 'KEC. CONTOH';
   const alamat = data.alamat_sekretariat || 'Jl. Raya Desa Contoh No. 123, Kab. Contoh, Prov. Contoh';
+  const logoKiri = data.logo_kiri || '';
+  const logoKanan = data.logo_kanan || '';
+
+  const logoKiriHtml = logoKiri
+    ? `<img src="${logoKiri}" style="width: 70px; height: 70px; object-fit: contain; display: block;" />`
+    : `<div style="width: 70px; height: 70px;"></div>`;
+
+  const logoKananHtml = logoKanan
+    ? `<img src="${logoKanan}" style="width: 70px; height: 70px; object-fit: contain; display: block;" />`
+    : `<div style="width: 70px; height: 70px;"></div>`;
 
   content += `
-    <div style="text-align: center; border-bottom: 3px solid black; padding-bottom: 10px; margin-bottom: 20px;">
-      <h2 style="margin: 0; font-size: 18px; font-weight: bold; text-transform: uppercase;">KULIAH KERJA NYATA (KKN) ${universitas}</h2>
-      <h3 style="margin: 0; font-size: 16px; text-transform: uppercase;">POSKO ${userValue?.posko_id || ''} - DESA ${desa} KEC. ${kecamatan}</h3>
-      <p style="margin: 5px 0 0; font-size: 12px;">Sekretariat: ${alamat}</p>
+    <div style="border-bottom: 3px solid black; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+      <div style="flex-shrink: 0;">${logoKiriHtml}</div>
+      <div style="text-align: center; flex: 1;">
+        <h2 style="margin: 0; font-size: 18px; font-weight: bold; text-transform: uppercase;">KULIAH KERJA NYATA (KKN) ${universitas}</h2>
+        <h3 style="margin: 0; font-size: 16px; text-transform: uppercase;">POSKO ${userValue?.posko_id || ''} - DESA ${desa} KEC. ${kecamatan}</h3>
+        <p style="margin: 5px 0 0; font-size: 12px;">Sekretariat: ${alamat}</p>
+      </div>
+      <div style="flex-shrink: 0;">${logoKananHtml}</div>
     </div>
   `;
 

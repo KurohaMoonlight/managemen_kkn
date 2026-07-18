@@ -199,9 +199,107 @@ const defaultKop = {
   nama_desa: 'DESA CONTOH',
   nama_kecamatan: 'KEC. CONTOH',
   alamat_sekretariat: 'Jl. Raya Desa Contoh No. 123, Kab. Contoh, Prov. Contoh',
+  logo_kiri: '',
+  logo_kanan: '',
 };
 // Merge defaults
 kopSettings.value = { ...defaultKop, ...kopSettings.value };
+
+const poskoId = user.value?.posko_id || 'default';
+const LOGO_HISTORY_KEY = `kkn_logo_history_${poskoId}`;
+
+const MAX_LOGO_HISTORY = 8;
+const logoHistory = ref(JSON.parse(localStorage.getItem(LOGO_HISTORY_KEY) || '[]'));
+const logoPickerOpen = ref(null); // 'kiri' | 'kanan' | null
+
+const addToLogoHistory = (url) => {
+  // Hapus duplikat
+  const filtered = logoHistory.value.filter(h => h !== url);
+  // Taruh yang baru di depan
+  filtered.unshift(url);
+  // Batasi max
+  logoHistory.value = filtered.slice(0, MAX_LOGO_HISTORY);
+  localStorage.setItem(LOGO_HISTORY_KEY, JSON.stringify(logoHistory.value));
+};
+
+const handleLogoUpload = async (side, event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    toastWarning('File harus berupa gambar (PNG, JPG, SVG, dll)');
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    toastWarning('Ukuran file logo terlalu besar (maksimal 15MB)');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('logo', file);
+
+  try {
+    const res = await fetch('/api/surat/logo', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token.value}` },
+      body: formData
+    });
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      const url = data.url;
+      if (side === 'kiri') kopSettings.value.logo_kiri = url;
+      else kopSettings.value.logo_kanan = url;
+      addToLogoHistory(url);
+      logoPickerOpen.value = null;
+    } else {
+      toastError(data.message || 'Gagal mengupload logo');
+    }
+  } catch (err) {
+    toastError('Terjadi kesalahan saat upload logo');
+  }
+};
+
+const removeLogo = (side) => {
+  if (side === 'kiri') kopSettings.value.logo_kiri = '';
+  else kopSettings.value.logo_kanan = '';
+};
+
+const openLogoPicker = (side) => {
+  logoPickerOpen.value = logoPickerOpen.value === side ? null : side;
+};
+
+const selectLogoFromHistory = (side, b64) => {
+  if (side === 'kiri') kopSettings.value.logo_kiri = b64;
+  else kopSettings.value.logo_kanan = b64;
+  logoPickerOpen.value = null;
+};
+
+const removeFromHistory = (idx) => {
+  logoHistory.value.splice(idx, 1);
+  localStorage.setItem(LOGO_HISTORY_KEY, JSON.stringify(logoHistory.value));
+};
+
+// Refs untuk hidden file inputs (selalu ada di DOM, tidak bergantung pada picker v-if)
+const logoInputKiri = ref(null);
+const logoInputKanan = ref(null);
+
+const triggerLogoUpload = (side) => {
+  // Reset value dulu supaya @change selalu fire meski file sama
+  if (side === 'kiri') {
+    if (logoInputKiri.value) { logoInputKiri.value.value = ''; logoInputKiri.value.click(); }
+  } else {
+    if (logoInputKanan.value) { logoInputKanan.value.value = ''; logoInputKanan.value.click(); }
+  }
+};
+
+// Tutup picker kalau klik di luar
+const handlePickerOutsideClick = (e) => {
+  if (logoPickerOpen.value && !e.target.closest('.sg-logo-picker-wrap')) {
+    logoPickerOpen.value = null;
+  }
+};
+onMounted(() => window.addEventListener('click', handlePickerOutsideClick));
+onUnmounted(() => window.removeEventListener('click', handlePickerOutsideClick));
 
 watch(kopSettings, (val) => {
   localStorage.setItem('kkn_kop_settings', JSON.stringify(val));
@@ -228,7 +326,13 @@ watch(editorJenis, () => {
   editorDataField.value = {};
 });
 
+// Generation counter: naik setiap kali openNew/backToList dipanggil,
+// sehingga openExistingEditor yang sedang async bisa deteksi sudah dibatalkan
+let editorGeneration = 0;
+
 const openNewEditor = () => {
+  editorGeneration++;           // ← batalkan openExistingEditor yang mungkin sedang loading
+  isLoadingEditor.value = false; // ← pastikan loading overlay tidak nyangkut
   editingId.value = null;
   editorJenis.value = '';
   editorNamaSurat.value = '';
@@ -262,32 +366,77 @@ const proceedToEditor = () => {
   view.value = 'editor';
 };
 
-const openExistingEditor = (surat) => {
-  editingId.value = surat.id;
-  editorJenis.value = surat.jenis_surat;
-  editorNamaSurat.value = surat.nama_surat;
-  editorNomorSurat.value = surat.nomor_surat === '-' ? '' : surat.nomor_surat;
+const isLoadingEditor = ref(false);
+
+const openExistingEditor = async (surat) => {
+  const myGeneration = ++editorGeneration;  // ambil generation saat ini
+  isLoadingEditor.value = true;
+  // Reset state dulu sebelum fetch
+  editingId.value = null;
+  editorDataField.value = { signatures: [] };
+
   try {
-    const raw = typeof surat.data_field === 'string' ? JSON.parse(surat.data_field) : surat.data_field;
-    // Separate kop from field data
-    const { universitas, nama_desa, nama_kecamatan, alamat_sekretariat, ...rest } = raw || {};
-    editorDataField.value = rest;
-    if (!editorDataField.value.signatures) {
-      editorDataField.value.signatures = [];
+    // Fetch full data (termasuk data_field) via GET /api/surat/:id
+    // karena list endpoint sudah exclude data_field untuk performa
+    const res = await fetch(`/api/surat/${surat.id}`, {
+      headers: { Authorization: `Bearer ${token.value}` }
+    });
+
+    // Jika selama fetch ada openNewEditor/backToList → batalkan
+    if (myGeneration !== editorGeneration) return;
+
+    if (!res.ok) {
+      toastError('Gagal memuat data surat');
+      return;
     }
-    // update kop if present
-    if (universitas) kopSettings.value.universitas = universitas;
-    if (nama_desa) kopSettings.value.nama_desa = nama_desa;
-    if (nama_kecamatan) kopSettings.value.nama_kecamatan = nama_kecamatan;
-    if (alamat_sekretariat) kopSettings.value.alamat_sekretariat = alamat_sekretariat;
+    const result = await res.json();
+
+    // Cek lagi setelah await res.json()
+    if (myGeneration !== editorGeneration) return;
+
+    const full = result.data;
+
+    editingId.value = full.id;
+    editorJenis.value = full.jenis_surat;
+    editorNamaSurat.value = full.nama_surat;
+    editorNomorSurat.value = full.nomor_surat === '-' ? '' : full.nomor_surat;
+
+    try {
+      const raw = typeof full.data_field === 'string' ? JSON.parse(full.data_field) : (full.data_field || {});
+      // Pisahkan kop & logo dari field isi surat
+      const { universitas, nama_desa, nama_kecamatan, alamat_sekretariat, logo_kiri, logo_kanan, ...rest } = raw;
+      editorDataField.value = rest;
+      if (!editorDataField.value.signatures) {
+        editorDataField.value.signatures = [];
+      }
+      // Update kopSettings jika data ada di surat
+      if (universitas) kopSettings.value.universitas = universitas;
+      if (nama_desa) kopSettings.value.nama_desa = nama_desa;
+      if (nama_kecamatan) kopSettings.value.nama_kecamatan = nama_kecamatan;
+      if (alamat_sekretariat) kopSettings.value.alamat_sekretariat = alamat_sekretariat;
+      if (logo_kiri) kopSettings.value.logo_kiri = logo_kiri;
+      if (logo_kanan) kopSettings.value.logo_kanan = logo_kanan;
+    } catch (e) {
+      editorDataField.value = { signatures: [] };
+    }
+
+    view.value = 'editor';
   } catch (e) {
-    editorDataField.value = {};
+    if (myGeneration === editorGeneration) {
+      toastError('Terjadi kesalahan saat memuat surat');
+    }
+  } finally {
+    if (myGeneration === editorGeneration) {
+      isLoadingEditor.value = false;
+    }
   }
-  view.value = 'editor';
 };
 
 const backToList = () => {
+  editorGeneration++;           // ← batalkan openExistingEditor yang mungkin sedang loading
   view.value = 'list';
+  editingId.value = null;
+  isLoadingEditor.value = false;
   fetchSuratList();
 };
 
@@ -590,7 +739,7 @@ onMounted(() => {
         @click.stop
       >
         <template v-if="isSekreOrKordes">
-          <button @click="openExistingEditor(contextMenu.surat); closeContextMenu()" class="context-menu-item">✏️ Edit Surat</button>
+          <button @click="closeContextMenu(); openExistingEditor(contextMenu.surat)" class="context-menu-item" :disabled="isLoadingEditor">✏️ Edit Surat</button>
           <button v-if="contextMenu.surat && contextMenu.surat.status === 'complete'" @click="downloadSuratPdf(contextMenu.surat); closeContextMenu()" class="context-menu-item">⬇️ Unduh PDF</button>
           <button @click="deleteSurat(contextMenu.surat.id); closeContextMenu()" class="context-menu-item context-menu-item--danger">🗑️ Hapus</button>
         </template>
@@ -598,6 +747,16 @@ onMounted(() => {
           <button v-if="contextMenu.surat && contextMenu.surat.status === 'complete'" @click="downloadSuratPdf(contextMenu.surat); closeContextMenu()" class="context-menu-item">⬇️ Unduh PDF</button>
           <button v-if="contextMenu.surat && contextMenu.surat.status === 'complete'" @click="printSuratDirect(contextMenu.surat); closeContextMenu()" class="context-menu-item">🖨️ Cetak</button>
         </template>
+      </div>
+    </Teleport>
+
+    <!-- Loading overlay saat fetch data surat -->
+    <Teleport to="body">
+      <div v-if="isLoadingEditor" class="sg-modal-overlay" style="z-index: 999998;">
+        <div style="background: white; border-radius: 12px; padding: 2rem 3rem; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+          <div class="spinner-sm" style="width: 32px; height: 32px; margin: 0 auto 1rem;"></div>
+          <p style="margin: 0; color: #475569; font-weight: 600;">Memuat data surat...</p>
+        </div>
       </div>
     </Teleport>
 
@@ -694,6 +853,87 @@ onMounted(() => {
             <!-- Kop Surat -->
             <div class="sg-section-box">
               <div class="sg-section-title">📋 PENGATURAN KOP SURAT <span class="sg-section-hint">(OTOMATIS TERSIMPAN)</span></div>
+
+              <!-- Hidden file inputs untuk upload logo (dipindahkan ke luar dari v-if dropdown) -->
+              <input type="file" accept="image/*" @change="handleLogoUpload('kiri', $event)" ref="logoInputKiri" style="display:none" />
+              <input type="file" accept="image/*" @change="handleLogoUpload('kanan', $event)" ref="logoInputKanan" style="display:none" />
+
+              <!-- Logo Upload Row with History Picker -->
+              <div class="sg-logo-row">
+
+                <!-- Logo Kiri -->
+                <div class="sg-logo-slot sg-logo-picker-wrap">
+                  <div class="sg-logo-label">🖼️ Logo Kiri (Universitas)</div>
+                  <!-- Trigger: preview jika ada logo, atau tombol + pilih -->
+                  <div class="sg-logo-trigger" @click.stop="openLogoPicker('kiri')">
+                    <div v-if="kopSettings.logo_kiri" class="sg-logo-preview">
+                      <img :src="kopSettings.logo_kiri" alt="Logo Kiri" class="sg-logo-img" />
+                      <button @click.stop="removeLogo('kiri')" class="sg-logo-remove" title="Hapus logo">✖</button>
+                    </div>
+                    <div v-else class="sg-logo-upload-btn">
+                      <span>🖼️ Pilih / Upload</span>
+                    </div>
+                  </div>
+
+                  <!-- Picker Dropdown Kiri -->
+                  <div v-if="logoPickerOpen === 'kiri'" class="sg-logo-picker" @click.stop>
+                    <div class="sg-logo-picker-title">Riwayat Logo</div>
+                    <div v-if="logoHistory.length === 0" class="sg-logo-picker-empty">Belum ada logo tersimpan</div>
+                    <div v-else class="sg-logo-history-grid">
+                      <div
+                        v-for="(logo, idx) in logoHistory"
+                        :key="idx"
+                        class="sg-logo-history-item"
+                        :class="{ 'sg-logo-history-item--active': kopSettings.logo_kiri === logo }"
+                        @click="selectLogoFromHistory('kiri', logo)"
+                      >
+                        <img :src="logo" class="sg-logo-history-img" />
+                        <button @click.stop="removeFromHistory(idx)" class="sg-logo-history-del" title="Hapus dari riwayat">✖</button>
+                      </div>
+                    </div>
+                    <div class="sg-logo-picker-upload" @click.stop="triggerLogoUpload('kiri')">
+                      <span>⬆️ Upload Gambar Baru</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Logo Kanan -->
+                <div class="sg-logo-slot sg-logo-picker-wrap">
+                  <div class="sg-logo-label">🖼️ Logo Kanan (KKN/Fakultas)</div>
+                  <div class="sg-logo-trigger" @click.stop="openLogoPicker('kanan')">
+                    <div v-if="kopSettings.logo_kanan" class="sg-logo-preview">
+                      <img :src="kopSettings.logo_kanan" alt="Logo Kanan" class="sg-logo-img" />
+                      <button @click.stop="removeLogo('kanan')" class="sg-logo-remove" title="Hapus logo">✖</button>
+                    </div>
+                    <div v-else class="sg-logo-upload-btn">
+                      <span>🖼️ Pilih / Upload</span>
+                    </div>
+                  </div>
+
+                  <!-- Picker Dropdown Kanan -->
+                  <div v-if="logoPickerOpen === 'kanan'" class="sg-logo-picker" @click.stop>
+                    <div class="sg-logo-picker-title">Riwayat Logo</div>
+                    <div v-if="logoHistory.length === 0" class="sg-logo-picker-empty">Belum ada logo tersimpan</div>
+                    <div v-else class="sg-logo-history-grid">
+                      <div
+                        v-for="(logo, idx) in logoHistory"
+                        :key="idx"
+                        class="sg-logo-history-item"
+                        :class="{ 'sg-logo-history-item--active': kopSettings.logo_kanan === logo }"
+                        @click="selectLogoFromHistory('kanan', logo)"
+                      >
+                        <img :src="logo" class="sg-logo-history-img" />
+                        <button @click.stop="removeFromHistory(idx)" class="sg-logo-history-del" title="Hapus dari riwayat">✖</button>
+                      </div>
+                    </div>
+                    <div class="sg-logo-picker-upload" @click.stop="triggerLogoUpload('kanan')">
+                      <span>⬆️ Upload Gambar Baru</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
               <div class="sg-grid-2">
                 <div class="sg-field-group">
                   <label class="sg-label">Universitas</label>
@@ -1358,6 +1598,219 @@ onMounted(() => {
 .sg-section-hint {
   font-weight: 400;
   color: #94a3b8;
+}
+
+/* ─── LOGO UPLOAD & PICKER ──────────────────────────────── */
+.sg-logo-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.sg-logo-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: relative;
+}
+
+.sg-logo-picker-wrap {
+  position: relative;
+}
+
+.sg-logo-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.sg-logo-trigger {
+  cursor: pointer;
+}
+
+.sg-logo-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 70px;
+  border: 2px dashed #c7d2fe;
+  border-radius: 8px;
+  background: #eef2ff30;
+  cursor: pointer;
+  color: #818cf8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.sg-logo-trigger:hover .sg-logo-upload-btn {
+  background: #eef2ff;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.sg-logo-preview {
+  position: relative;
+  height: 70px;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  transition: border-color 0.2s;
+}
+
+.sg-logo-trigger:hover .sg-logo-preview {
+  border-color: var(--color-primary);
+}
+
+.sg-logo-img {
+  max-width: 100%;
+  max-height: 62px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.sg-logo-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: white;
+  border: none;
+  font-size: 0.6rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(239,68,68,0.4);
+  transition: all 0.15s;
+}
+
+.sg-logo-remove:hover {
+  background: #dc2626;
+  transform: scale(1.1);
+}
+
+/* Picker dropdown */
+.sg-logo-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 1000;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 200px;
+}
+
+.sg-logo-picker-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sg-logo-picker-empty {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.sg-logo-history-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+
+.sg-logo-history-item {
+  position: relative;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #f8fafc;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.sg-logo-history-item:hover {
+  border-color: var(--color-primary);
+  background: #eef2ff;
+}
+
+.sg-logo-history-item--active {
+  border-color: var(--color-primary);
+  background: #eef2ff;
+  box-shadow: 0 0 0 2px rgba(79,70,229,0.2);
+}
+
+.sg-logo-history-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.sg-logo-history-del {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: white;
+  border: none;
+  font-size: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sg-logo-history-item:hover .sg-logo-history-del {
+  opacity: 1;
+}
+
+.sg-logo-picker-upload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: 1.5px dashed #c7d2fe;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.sg-logo-picker-upload:hover {
+  background: #eef2ff;
+  border-color: var(--color-primary);
 }
 
 .sg-grid-2 {

@@ -2898,6 +2898,35 @@ setupBackupService(app, pool, uploadDir, authenticateToken, requireAdminOrAbove)
 // ARSIP SURAT RESMI ROUTES
 // ==========================================
 
+// 0. UPLOAD LOGO SURAT
+app.post('/api/surat/logo', authenticateToken, upload.single('logo'), compressImages, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Tidak ada file yang diunggah' });
+    }
+    
+    const logoDir = path.join(__dirname, 'uploads', 'logo_surat');
+    if (!fs.existsSync(logoDir)) {
+      fs.mkdirSync(logoDir, { recursive: true });
+    }
+
+    const ext = path.extname(req.file.originalname) || '.png';
+    // Cari logo ke berapa
+    const files = fs.readdirSync(logoDir).filter(f => f.startsWith('logo'));
+    const count = files.length + 1;
+    const newFilename = `logo${count}${ext}`;
+    const newPath = path.join(logoDir, newFilename);
+
+    // Pindahkan file
+    fs.renameSync(req.file.path, newPath);
+
+    res.json({ success: true, url: `/uploads/logo_surat/${newFilename}` });
+  } catch (error) {
+    console.error('Error upload logo surat:', error);
+    res.status(500).json({ success: false, message: 'Gagal mengupload logo' });
+  }
+});
+
 // 1. GET ALL SURAT FOR POSKO
 app.get('/api/surat', authenticateToken, async (req, res) => {
   try {
@@ -2911,7 +2940,12 @@ app.get('/api/surat', authenticateToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Posko ID tidak ditemukan' });
     }
     const [rows] = await pool.query(
-      'SELECT s.*, u.nama_lengkap as pembuat FROM surat_history s LEFT JOIN users u ON s.user_id = u.id WHERE s.posko_id = ? ORDER BY s.created_at DESC',
+      `SELECT s.id, s.posko_id, s.user_id, s.jenis_surat, s.nama_surat, s.nomor_surat, s.status, s.created_at, s.updated_at,
+              u.nama_lengkap as pembuat
+       FROM surat_history s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE s.posko_id = ?
+       ORDER BY s.created_at DESC`,
       [poskoId]
     );
     res.json({ success: true, data: rows });
