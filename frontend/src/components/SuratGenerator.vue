@@ -201,9 +201,22 @@ const defaultKop = {
   alamat_sekretariat: 'Jl. Raya Desa Contoh No. 123, Kab. Contoh, Prov. Contoh',
   logo_kiri: '',
   logo_kanan: '',
+  logo_kiri_size: 70,
+  logo_kanan_size: 70,
+  chain_logo_size: true
 };
-// Merge defaults
+// Merge defaults (pastikan tipe data angka)
 kopSettings.value = { ...defaultKop, ...kopSettings.value };
+kopSettings.value.logo_kiri_size = Number(kopSettings.value.logo_kiri_size) || 70;
+kopSettings.value.logo_kanan_size = Number(kopSettings.value.logo_kanan_size) || 70;
+
+// Watcher untuk sinkronisasi ukuran logo jika di-chain
+watch(() => kopSettings.value.logo_kiri_size, (newVal) => {
+  if (kopSettings.value.chain_logo_size) kopSettings.value.logo_kanan_size = newVal;
+});
+watch(() => kopSettings.value.logo_kanan_size, (newVal) => {
+  if (kopSettings.value.chain_logo_size) kopSettings.value.logo_kiri_size = newVal;
+});
 
 const poskoId = user.value?.posko_id || 'default';
 const LOGO_HISTORY_KEY = `kkn_logo_history_${poskoId}`;
@@ -225,8 +238,12 @@ const addToLogoHistory = (url) => {
 const handleLogoUpload = async (side, event) => {
   const file = event.target.files[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    toastWarning('File harus berupa gambar (PNG, JPG, SVG, dll)');
+  
+  const fileName = file.name.toLowerCase();
+  const isValidExt = /\.(png|jpe?g|svg|webp|gif|bmp)$/.test(fileName);
+
+  if (!file.type.startsWith('image/') && !isValidExt) {
+    toastWarning('File harus berupa gambar (PNG, JPG, SVG, WebP, dll)');
     return;
   }
   if (file.size > 15 * 1024 * 1024) {
@@ -314,8 +331,8 @@ const previewHtml = computed(() => {
     jenis_surat: editorJenis.value,
     nomor_surat: editorNomorSurat.value,
     data_field: {
-      ...kopSettings.value,
       ...editorDataField.value,
+      ...kopSettings.value,
     },
   };
   return getSuratPreviewHtml(s, user.value);
@@ -450,7 +467,7 @@ const saveSurat = async (status) => {
     jenis_surat: editorJenis.value,
     nama_surat: editorNamaSurat.value || editorJenis.value,
     nomor_surat: editorNomorSurat.value || '-',
-    data_field: { ...kopSettings.value, ...editorDataField.value },
+    data_field: { ...editorDataField.value, ...kopSettings.value },
     status,
   };
 
@@ -510,6 +527,7 @@ const printSurat = () => {
 <html>
 <head>
   <meta charset="UTF-8">
+  <base href="${window.location.origin}">
   <title>${editorNamaSurat.value || editorJenis.value}</title>
   <style>
     body { margin: 0; padding: 0; background: white; }
@@ -527,8 +545,16 @@ const printSurat = () => {
   printWindow.document.close();
 };
 
-const printSuratDirect = (surat) => {
+const printSuratDirect = async (suratItem) => {
   try {
+    let surat = suratItem;
+    if (!surat.data_field) {
+      const res = await fetch(`/api/surat/${suratItem.id}`, { headers: { Authorization: `Bearer ${token.value}` } });
+      if (res.ok) {
+        const full = await res.json();
+        surat = full.data;
+      }
+    }
     const raw = typeof surat.data_field === 'string' ? JSON.parse(surat.data_field) : surat.data_field;
     const s = {
       jenis_surat: surat.jenis_surat,
@@ -542,6 +568,7 @@ const printSuratDirect = (surat) => {
 <html>
 <head>
   <meta charset="UTF-8">
+  <base href="${window.location.origin}">
   <title>${surat.nama_surat || surat.jenis_surat}</title>
   <style>
     body { margin: 0; padding: 0; background: white; }
@@ -562,8 +589,16 @@ const printSuratDirect = (surat) => {
   }
 };
 
-const downloadSuratPdf = (surat) => {
+const downloadSuratPdf = async (suratItem) => {
   try {
+    let surat = suratItem;
+    if (!surat.data_field) {
+      const res = await fetch(`/api/surat/${suratItem.id}`, { headers: { Authorization: `Bearer ${token.value}` } });
+      if (res.ok) {
+        const full = await res.json();
+        surat = full.data;
+      }
+    }
     const raw = typeof surat.data_field === 'string' ? JSON.parse(surat.data_field) : surat.data_field;
     const s = {
       jenis_surat: surat.jenis_surat,
@@ -855,8 +890,8 @@ onMounted(() => {
               <div class="sg-section-title">📋 PENGATURAN KOP SURAT <span class="sg-section-hint">(OTOMATIS TERSIMPAN)</span></div>
 
               <!-- Hidden file inputs untuk upload logo (dipindahkan ke luar dari v-if dropdown) -->
-              <input type="file" accept="image/*" @change="handleLogoUpload('kiri', $event)" ref="logoInputKiri" style="display:none" />
-              <input type="file" accept="image/*" @change="handleLogoUpload('kanan', $event)" ref="logoInputKanan" style="display:none" />
+              <input type="file" accept="image/*,.webp,.svg,.png,.jpg,.jpeg" @change="handleLogoUpload('kiri', $event)" ref="logoInputKiri" style="display:none" />
+              <input type="file" accept="image/*,.webp,.svg,.png,.jpg,.jpeg" @change="handleLogoUpload('kanan', $event)" ref="logoInputKanan" style="display:none" />
 
               <!-- Logo Upload Row with History Picker -->
               <div class="sg-logo-row">
@@ -932,6 +967,27 @@ onMounted(() => {
                   </div>
                 </div>
 
+              </div>
+
+              <!-- Slider Ukuran Logo -->
+              <div class="sg-logo-size-controls" style="margin-bottom: 1.5rem; background: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #475569;">📏 Ukuran Logo</span>
+                  <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; cursor: pointer; color: var(--color-primary); font-weight: 600;">
+                    <input type="checkbox" v-model="kopSettings.chain_logo_size" />
+                    🔗 Samakan Kiri Kanan
+                  </label>
+                </div>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                  <div style="flex: 1; min-width: 150px;">
+                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Logo Kiri ({{ kopSettings.logo_kiri_size }}px)</label>
+                    <input type="range" v-model="kopSettings.logo_kiri_size" min="40" max="150" style="width: 100%;" />
+                  </div>
+                  <div style="flex: 1; min-width: 150px;">
+                    <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Logo Kanan ({{ kopSettings.logo_kanan_size }}px)</label>
+                    <input type="range" v-model="kopSettings.logo_kanan_size" min="40" max="150" :disabled="kopSettings.chain_logo_size" style="width: 100%;" :style="{ opacity: kopSettings.chain_logo_size ? 0.5 : 1, cursor: kopSettings.chain_logo_size ? 'not-allowed' : 'pointer' }" />
+                  </div>
+                </div>
               </div>
 
               <div class="sg-grid-2">

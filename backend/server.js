@@ -74,7 +74,8 @@ const compressImages = async (req, res, next) => {
     
     for (const file of files) {
       if (file.mimetype && file.mimetype.startsWith('image/')) {
-        const buffer = await sharp(file.path)
+        const inputBuffer = fs.readFileSync(file.path);
+        const buffer = await sharp(inputBuffer)
           .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
           .jpeg({ quality: 80, force: false })
           .png({ quality: 80, force: false })
@@ -2917,8 +2918,13 @@ app.post('/api/surat/logo', authenticateToken, upload.single('logo'), compressIm
     const newFilename = `logo${count}${ext}`;
     const newPath = path.join(logoDir, newFilename);
 
-    // Pindahkan file
-    fs.renameSync(req.file.path, newPath);
+    // Pindahkan file dengan penanganan ekstra untuk Windows
+    try {
+      fs.renameSync(req.file.path, newPath);
+    } catch (renameErr) {
+      fs.copyFileSync(req.file.path, newPath);
+      fs.unlinkSync(req.file.path);
+    }
 
     res.json({ success: true, url: `/uploads/logo_surat/${newFilename}` });
   } catch (error) {

@@ -25,14 +25,21 @@ export const getSuratPreviewHtml = (s, userValue) => {
   const alamat = data.alamat_sekretariat || 'Jl. Raya Desa Contoh No. 123, Kab. Contoh, Prov. Contoh';
   const logoKiri = data.logo_kiri || '';
   const logoKanan = data.logo_kanan || '';
+  
+  const sizeKiri = data.logo_kiri_size || 70;
+  const sizeKanan = data.logo_kanan_size || 70;
+
+  const getAbsoluteUrl = (url) => url && !url.startsWith('http') && !url.startsWith('data:') ? window.location.origin + url : url;
+  const absLogoKiri = getAbsoluteUrl(logoKiri);
+  const absLogoKanan = getAbsoluteUrl(logoKanan);
 
   const logoKiriHtml = logoKiri
-    ? `<img src="${logoKiri}" style="width: 70px; height: 70px; object-fit: contain; display: block;" />`
-    : `<div style="width: 70px; height: 70px;"></div>`;
+    ? `<img src="${absLogoKiri}" crossorigin="anonymous" style="width: ${sizeKiri}px; height: ${sizeKiri}px; object-fit: contain; display: block;" />`
+    : `<div style="width: ${sizeKiri}px; height: ${sizeKiri}px;"></div>`;
 
   const logoKananHtml = logoKanan
-    ? `<img src="${logoKanan}" style="width: 70px; height: 70px; object-fit: contain; display: block;" />`
-    : `<div style="width: 70px; height: 70px;"></div>`;
+    ? `<img src="${absLogoKanan}" crossorigin="anonymous" style="width: ${sizeKanan}px; height: ${sizeKanan}px; object-fit: contain; display: block;" />`
+    : `<div style="width: ${sizeKanan}px; height: ${sizeKanan}px;"></div>`;
 
   content += `
     <div style="border-bottom: 3px solid black; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
