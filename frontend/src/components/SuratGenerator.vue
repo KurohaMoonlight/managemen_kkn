@@ -972,11 +972,17 @@ onMounted(() => {
                 <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
                   <div style="flex: 1; min-width: 150px;">
                     <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Lebar / Width</label>
-                    <input type="number" v-model="kopSettings.logo_kiri_width" class="sg-input" style="width: 100%;" min="10" />
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <input type="range" v-model="kopSettings.logo_kiri_width" min="10" max="300" style="flex: 1;" />
+                      <input type="number" v-model="kopSettings.logo_kiri_width" class="sg-input" style="width: 70px; padding: 0.3rem;" min="10" />
+                    </div>
                   </div>
                   <div style="flex: 1; min-width: 150px;">
                     <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Tinggi / Height</label>
-                    <input type="number" v-model="kopSettings.logo_kiri_height" class="sg-input" style="width: 100%;" min="10" />
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <input type="range" v-model="kopSettings.logo_kiri_height" min="10" max="300" style="flex: 1;" />
+                      <input type="number" v-model="kopSettings.logo_kiri_height" class="sg-input" style="width: 70px; padding: 0.3rem;" min="10" />
+                    </div>
                   </div>
                 </div>
 
@@ -986,11 +992,17 @@ onMounted(() => {
                 <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                   <div style="flex: 1; min-width: 150px;">
                     <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Lebar / Width</label>
-                    <input type="number" v-model="kopSettings.logo_kanan_width" class="sg-input" style="width: 100%;" min="10" />
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <input type="range" v-model="kopSettings.logo_kanan_width" min="10" max="300" style="flex: 1;" />
+                      <input type="number" v-model="kopSettings.logo_kanan_width" class="sg-input" style="width: 70px; padding: 0.3rem;" min="10" />
+                    </div>
                   </div>
                   <div style="flex: 1; min-width: 150px;">
                     <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 0.3rem;">Tinggi / Height</label>
-                    <input type="number" v-model="kopSettings.logo_kanan_height" class="sg-input" style="width: 100%;" min="10" />
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <input type="range" v-model="kopSettings.logo_kanan_height" min="10" max="300" style="flex: 1;" />
+                      <input type="number" v-model="kopSettings.logo_kanan_height" class="sg-input" style="width: 70px; padding: 0.3rem;" min="10" />
+                    </div>
                   </div>
                 </div>
               </div>
