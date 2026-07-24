@@ -2513,23 +2513,16 @@ export const accrueIuran = async (posko_id) => {
   const [posko] = await pool.query('SELECT iuran_nominal_base FROM posko WHERE id = ?', [posko_id]);
   const baseTarget = Math.round(Number(posko[0]?.iuran_nominal_base) || 0);
   if (baseTarget > 0) {
-    // Increment nominal_target
+    // Target baru = Base Tagihan saat ini secara mutlak
+    // Terbayar di-reset jadi 0, status jadi 'belum'. Tidak ada sistem tunggakan masa lalu.
     await pool.query(`
       UPDATE keuangan_iuran
-      SET nominal_target = nominal_target + ?
+      SET 
+        nominal_target = ?,
+        nominal_terbayar = 0,
+        status = 'belum'
       WHERE posko_id = ?
     `, [baseTarget, posko_id]);
-    
-    // Recalculate status
-    await pool.query(`
-      UPDATE keuangan_iuran
-      SET status = CASE
-        WHEN nominal_terbayar >= nominal_target AND nominal_target > 0 THEN 'lunas'
-        WHEN nominal_terbayar > 0 THEN 'sebagian'
-        ELSE 'belum'
-      END
-      WHERE posko_id = ?
-    `, [posko_id]);
 
     // Update last_accrued
     await pool.query('UPDATE posko SET iuran_last_accrued = CURDATE() WHERE id = ?', [posko_id]);
