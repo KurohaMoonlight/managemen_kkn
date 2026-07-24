@@ -1202,11 +1202,17 @@ onMounted(() => {
   }
 
   .key-parts-row {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .key-sep {
+    display: none;
   }
 
   .key-part {
-    min-width: 60px;
+    width: 100%;
+    margin-bottom: 0.5rem;
   }
 
   .edit-actions {

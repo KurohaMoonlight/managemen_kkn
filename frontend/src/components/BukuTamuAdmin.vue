@@ -496,7 +496,7 @@ watch(showForm, async (newVal) => {
             {{ editingId ? 'Form Edit Data Tamu' : 'Form Tambah Data Tamu' }}
           </h3>
           
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+          <div class="form-grid">
             <!-- Left Column -->
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
               <div>
@@ -641,3 +641,27 @@ watch(showForm, async (newVal) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+/* Ensure the signature canvas takes full width if it wraps to the next row on desktop */
+.form-grid > div:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .form-grid > div:nth-child(3) {
+    grid-column: auto;
+  }
+}
+</style>
