@@ -128,13 +128,13 @@ app.use('/api', (req, res, next) => {
     if (fs.existsSync(maintenancePath)) {
       const data = JSON.parse(fs.readFileSync(maintenancePath, 'utf8'));
       if (data.is_maintenance) {
-        // Cek JWT untuk bypass superadmin
+        // Cek JWT untuk bypass
         const authHeader = req.headers['authorization'];
         if (authHeader) {
           const token = authHeader.split(' ')[1];
           try {
             const decoded = jwt.verify(token, JWT_SECRET);
-            if (decoded.role === 'superadmin') {
+            if (decoded.role === 'superadmin' || decoded.bypassed_maintenance === true) {
               return next();
             }
           } catch (e) {
@@ -587,7 +587,7 @@ app.post('/api/request-reset-password', async (req, res) => {
 
 // ─── LOGIN ─────────────────────────────────────────────────────────────────────
 app.post('/api/login', async (req, res) => {
-  const { nim, password } = req.body;
+  const { nim, password, is_override_login } = req.body;
   if (!nim || !password) return res.status(400).json({ message: 'NIM dan Password harus diisi.' });
 
   try {
@@ -614,7 +614,8 @@ app.post('/api/login', async (req, res) => {
         jabatan: user.jabatan,
         nama_lengkap: user.nama_lengkap,
         posko_id: user.posko_id,
-        nama_posko: user.nama_posko || null
+        nama_posko: user.nama_posko || null,
+        bypassed_maintenance: is_override_login === true
       },
       JWT_SECRET,
       { expiresIn: '1h' }

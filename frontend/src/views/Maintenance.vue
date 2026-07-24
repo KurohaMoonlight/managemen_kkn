@@ -121,18 +121,25 @@ const handleSecretLogin = async () => {
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: username.value, password: password.value })
+      body: JSON.stringify({ 
+        nim: username.value, 
+        password: password.value,
+        is_override_login: true
+      })
     });
     
     if (res.ok) {
       const data = await res.json();
-      if (data.user.role === 'superadmin') {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = '/superadmin';
-      } else {
-        loginError.value = 'Hanya superadmin yang diizinkan masuk.';
-      }
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('maintenance_bypassed', 'true');
+      
+      const roleToPath = {
+        superadmin: '/superadmin',
+        admin: '/admin',
+        mahasiswa: '/mahasiswa'
+      };
+      window.location.href = roleToPath[data.user.role] || '/';
     } else {
       const data = await res.json();
       loginError.value = data.message || 'Login gagal.';

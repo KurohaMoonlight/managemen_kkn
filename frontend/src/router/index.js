@@ -78,19 +78,23 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || 'null');
+  
   const isSuperadmin = user && user.role === 'superadmin';
+  const hasBypassed = localStorage.getItem('maintenance_bypassed') === 'true';
+  const canBypass = isSuperadmin || hasBypassed;
 
   // 1. Cek Maintenance Mode
   try {
     const res = await fetch('/api/maintenance');
     const data = await res.json();
     if (data.is_maintenance) {
-      if (isSuperadmin) {
+      if (canBypass) {
         if (to.path === '/maintenance') return next('/');
       } else {
         if (to.path !== '/maintenance') return next('/maintenance');
       }
     } else {
+      if (hasBypassed) localStorage.removeItem('maintenance_bypassed');
       if (to.path === '/maintenance') return next('/');
     }
   } catch (error) {
