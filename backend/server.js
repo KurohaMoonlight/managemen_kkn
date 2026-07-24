@@ -15,6 +15,7 @@ import { google } from 'googleapis';
 import cron from 'node-cron';
 import { setupBackupService } from './backupService.mjs';
 import { createRequire } from 'module';
+import { exec } from 'child_process';
 
 const require = createRequire(import.meta.url);
 const archiver = require('archiver');
@@ -3258,6 +3259,46 @@ app.get('/api/posko/:id/rekap-absensi', authenticateToken, async (req, res) => {
 // ==========================================
 // 10. BUKU TAMU API (ADMIN)
 // ==========================================
+
+app.post('/api/admin/extract-signature', authenticateToken, upload.single('signature_image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Tidak ada file yang diunggah' });
+  }
+
+  const inputPath = req.file.path;
+  const outputPath = path.join(__dirname, 'uploads', `extracted_${Date.now()}.png`);
+  const scriptPath = path.join(__dirname, 'extract_signature.py');
+
+  // Asumsi 'python' ada di PATH
+  exec(`python "${scriptPath}" "${inputPath}" "${outputPath}"`, (error, stdout, stderr) => {
+    if (error) {
+      console.error('Python Error:', error);
+      console.error('Stderr:', stderr);
+      // Clean up input
+      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+      return res.status(500).json({ message: 'Gagal mengekstrak tanda tangan' });
+    }
+
+    try {
+      if (fs.existsSync(outputPath)) {
+        const imageBuffer = fs.readFileSync(outputPath);
+        const base64Image = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+        
+        // Clean up both input and output files
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
+        
+        res.json({ signature_base64: base64Image });
+      } else {
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        res.status(500).json({ message: 'File output tidak ditemukan' });
+      }
+    } catch (fsError) {
+      console.error('File cleanup error:', fsError);
+      res.status(500).json({ message: 'Gagal membaca hasil ekstraksi' });
+    }
+  });
+});
 
 // Get daftar buku tamu untuk posko yang sedang login
 app.get('/api/admin/buku-tamu', authenticateToken, async (req, res) => {

@@ -14,6 +14,8 @@ const { confirm } = useConfirm();
 const tamuList = ref([]);
 const showForm = ref(false);
 const isSubmitting = ref(false);
+const isExtracting = ref(false);
+const fileInput = ref(null);
 const showPrintSettings = ref(false);
 const printConfigMode = ref('otomatis');
 const isLoadingLocation = ref(false);
@@ -146,6 +148,55 @@ const drawTouch = (e) => {
 const clearSignature = () => {
   if (ctx && sigCanvas.value) {
     ctx.clearRect(0, 0, sigCanvas.value.width, sigCanvas.value.height);
+  }
+};
+
+const uploadAndExtractSignature = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  isExtracting.value = true;
+  const formData = new FormData();
+  formData.append('signature_image', file);
+
+  try {
+    const res = await fetch('/api/admin/extract-signature', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${props.token}`
+      },
+      body: formData
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const img = new Image();
+      img.onload = () => {
+        if (ctx && sigCanvas.value) {
+          ctx.clearRect(0, 0, sigCanvas.value.width, sigCanvas.value.height);
+          
+          const scale = Math.min(sigCanvas.value.width / img.width, sigCanvas.value.height / img.height);
+          const drawWidth = img.width * scale * 0.8;
+          const drawHeight = img.height * scale * 0.8;
+          
+          const x = (sigCanvas.value.width - drawWidth) / 2;
+          const y = (sigCanvas.value.height - drawHeight) / 2;
+          
+          ctx.drawImage(img, x, y, drawWidth, drawHeight);
+          toastSuccess('Berhasil mengekstrak tanda tangan');
+        }
+      };
+      img.src = data.signature_base64;
+    } else {
+      const data = await res.json();
+      toastError(data.message || 'Gagal mengekstrak tanda tangan');
+    }
+  } catch (err) {
+    console.error(err);
+    toastError('Terjadi kesalahan saat memproses gambar');
+  } finally {
+    isExtracting.value = false;
+    event.target.value = '';
   }
 };
 
@@ -455,9 +506,15 @@ watch(showForm, async (newVal) => {
                   @touchstart.prevent="startDrawingTouch" @touchmove.prevent="drawTouch" @touchend.prevent="stopDrawing">
                 </canvas>
               </div>
-                  <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; align-items: center;">
                     <span style="font-size: 0.8rem; color: var(--text-muted);">Tanda tangan di dalam kotak</span>
-                    <button @click="clearSignature" class="btn btn-outline" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; height: auto;">Bersihkan</button>
+                    <div style="display: flex; gap: 0.5rem;">
+                      <input type="file" ref="fileInput" @change="uploadAndExtractSignature" accept="image/*" style="display: none;" />
+                      <button @click.prevent="$refs.fileInput.click()" class="btn btn-outline" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; height: auto;" :disabled="isExtracting">
+                        <i class="fas fa-camera"></i> {{ isExtracting ? 'Mengekstrak...' : 'Upload TTD (Auto Trace)' }}
+                      </button>
+                      <button @click.prevent="clearSignature" class="btn btn-outline" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; height: auto;">Bersihkan</button>
+                    </div>
                   </div>
             </div>
           </div>
