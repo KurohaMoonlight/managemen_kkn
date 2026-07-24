@@ -172,6 +172,30 @@ const editTamu = (t) => {
   showForm.value = true;
 };
 
+const deleteTamu = async (id) => {
+  if (!confirm('Apakah Anda yakin ingin menghapus buku tamu ini?')) return;
+
+  try {
+    const res = await fetch(`/api/admin/buku-tamu/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${props.token}`
+      }
+    });
+
+    if (res.ok) {
+      toastSuccess('Buku Tamu berhasil dihapus!');
+      fetchTamu();
+    } else {
+      const data = await res.json();
+      toastError(data.message || 'Gagal menghapus buku tamu.');
+    }
+  } catch (error) {
+    console.error(error);
+    toastError('Terjadi kesalahan sistem saat menghapus.');
+  }
+};
+
 const submitForm = async () => {
   if (!form.value.tanggal || !form.value.nama_tamu || !form.value.alamat_jabatan || !form.value.keperluan) {
     toastError("Mohon lengkapi semua kolom wajib (Kecuali mahasiswa menemui yang opsional).");
@@ -320,8 +344,9 @@ watch(showForm, async (newVal) => {
             <td style="padding: 1rem; text-align: center;">
               <img v-if="t.ttd_tamu_url" :src="t.ttd_tamu_url" style="height: 40px; max-width: 80px; object-fit: contain;" />
             </td>
-            <td style="padding: 1rem; text-align: center;">
+            <td style="padding: 1rem; text-align: center; display: flex; gap: 0.5rem; justify-content: center; border-bottom: none; height: 100%;">
               <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" @click="editTamu(t)">✏️ Edit</button>
+              <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; color: #b91c1c; border-color: #b91c1c;" @click="deleteTamu(t.id)">🗑️ Hapus</button>
             </td>
           </tr>
         </tbody>

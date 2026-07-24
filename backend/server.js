@@ -3315,6 +3315,23 @@ app.put('/api/admin/buku-tamu/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Hapus entri buku tamu
+app.delete('/api/admin/buku-tamu/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { posko_id } = req.user;
+
+  try {
+    const [existing] = await pool.query('SELECT * FROM buku_tamu WHERE id = ? AND posko_id = ?', [id, posko_id]);
+    if (existing.length === 0) return res.status(404).json({ message: 'Data tidak ditemukan atau Anda tidak memiliki akses' });
+
+    await pool.query('DELETE FROM buku_tamu WHERE id = ?', [id]);
+    res.json({ message: 'Buku Tamu berhasil dihapus' });
+  } catch (error) {
+    console.error('Buku Tamu Delete Error:', error);
+    res.status(500).json({ message: 'Gagal menghapus buku tamu' });
+  }
+});
+
 // ─── SUPERADMIN: RESET PASSWORD REQUESTS ──────────────────────────────────────
 app.get('/api/superadmin/reset-password-requests', authenticateToken, requireSuperadmin, async (req, res) => {
   try {
