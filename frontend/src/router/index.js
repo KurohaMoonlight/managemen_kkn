@@ -18,54 +18,56 @@ const routes = [
   {
     path: '/maintenance',
     name: 'Maintenance',
-    component: Maintenance
+    component: Maintenance,
+    meta: { title: 'Maintenance' }
   },
   {
     path: '/login',
     name: 'Login',
-    component: Login
+    component: Login,
+    meta: { title: 'Login' }
   },
   {
     path: '/blocked',
     name: 'BlockedPosko',
     component: BlockedPosko,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, title: 'Akses Ditolak' }
   },
   {
     path: '/superadmin',
     name: 'SuperadminDashboard',
     component: SuperadminDashboard,
-    meta: { requiresAuth: true, role: 'superadmin' }
+    meta: { requiresAuth: true, role: 'superadmin', title: 'Superadmin Dashboard' }
   },
   {
     path: '/admin',
     name: 'AdminDashboard',
     component: AdminDashboard,
-    meta: { requiresAuth: true, role: 'admin' }
+    meta: { requiresAuth: true, role: 'admin', title: 'Admin Dashboard' }
   },
   {
     path: '/mahasiswa',
     name: 'MahasiswaDashboard',
     component: MahasiswaDashboard,
-    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'] }
+    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'], title: 'Mahasiswa Dashboard' }
   },
   {
     path: '/pdd',
     name: 'PddDashboard',
     component: PddDashboard,
-    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'] }
+    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'], title: 'PDD Dashboard' }
   },
   {
     path: '/bendahara',
     name: 'BendaharaDashboard',
     component: BendaharaDashboard,
-    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'] }
+    meta: { requiresAuth: true, role: ['mahasiswa', 'admin'], title: 'Bendahara Dashboard' }
   },
   {
     path: '/surat-generator',
     name: 'SuratGenerator',
     component: SuratGenerator,
-    meta: { requiresAuth: true, role: ['mahasiswa', 'admin', 'superadmin'] }
+    meta: { requiresAuth: true, role: ['mahasiswa', 'admin', 'superadmin'], title: 'Generator Surat' }
   }
 ];
 
@@ -137,6 +139,11 @@ router.beforeEach(async (to, from, next) => {
   } else {
     next();
   }
+});
+
+router.afterEach((to) => {
+  const baseTitle = 'Sistem Manajemen KKN';
+  document.title = to.meta.title ? `${to.meta.title} - ${baseTitle}` : baseTitle;
 });
 
 export default router;

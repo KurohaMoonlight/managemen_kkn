@@ -3342,7 +3342,7 @@ app.post('/api/admin/buku-tamu', authenticateToken, async (req, res) => {
     const posko_id = req.user.posko_id;
     if (!posko_id) return res.status(403).json({ message: 'Anda tidak tergabung dalam posko manapun' });
 
-    const { tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id, signature_base64 } = req.body;
+    const { tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id, mhs_penyambut_ids, signature_base64 } = req.body;
     
     if (!tanggal || !nama_tamu || !alamat_jabatan || !keperluan || !signature_base64) {
       return res.status(400).json({ message: 'Form tidak lengkap' });
@@ -3368,9 +3368,10 @@ app.post('/api/admin/buku-tamu', authenticateToken, async (req, res) => {
     fs.writeFileSync(filePath, imageData);
     const dbPath = `/uploads/buku_tamu/${fileName}`;
 
+    const mhsIdsJson = mhs_penyambut_ids && Array.isArray(mhs_penyambut_ids) && mhs_penyambut_ids.length > 0 ? JSON.stringify(mhs_penyambut_ids) : null;
     await pool.query(
-      'INSERT INTO buku_tamu (posko_id, tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id, ttd_tamu_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [posko_id, tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id || null, dbPath]
+      'INSERT INTO buku_tamu (posko_id, tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id, mhs_penyambut_ids, ttd_tamu_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [posko_id, tanggal, nama_tamu, alamat_jabatan, keperluan, null, mhsIdsJson, dbPath]
     );
 
     res.json({ message: 'Buku Tamu berhasil disimpan' });
@@ -3384,7 +3385,7 @@ app.post('/api/admin/buku-tamu', authenticateToken, async (req, res) => {
 app.put('/api/admin/buku-tamu/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { posko_id } = req.user;
-  const { tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id } = req.body;
+  const { tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id, mhs_penyambut_ids } = req.body;
 
   if (!tanggal || !nama_tamu || !alamat_jabatan || !keperluan) {
     return res.status(400).json({ message: 'Lengkapi semua field wajib.' });
@@ -3394,9 +3395,10 @@ app.put('/api/admin/buku-tamu/:id', authenticateToken, async (req, res) => {
     const [existing] = await pool.query('SELECT * FROM buku_tamu WHERE id = ? AND posko_id = ?', [id, posko_id]);
     if (existing.length === 0) return res.status(404).json({ message: 'Data tidak ditemukan' });
 
+    const mhsIdsJson = mhs_penyambut_ids && Array.isArray(mhs_penyambut_ids) && mhs_penyambut_ids.length > 0 ? JSON.stringify(mhs_penyambut_ids) : null;
     await pool.query(
-      'UPDATE buku_tamu SET tanggal = ?, nama_tamu = ?, alamat_jabatan = ?, keperluan = ?, mhs_penyambut_id = ? WHERE id = ?',
-      [tanggal, nama_tamu, alamat_jabatan, keperluan, mhs_penyambut_id || null, id]
+      'UPDATE buku_tamu SET tanggal = ?, nama_tamu = ?, alamat_jabatan = ?, keperluan = ?, mhs_penyambut_id = ?, mhs_penyambut_ids = ? WHERE id = ?',
+      [tanggal, nama_tamu, alamat_jabatan, keperluan, null, mhsIdsJson, id]
     );
 
     res.json({ message: 'Buku Tamu berhasil diubah' });

@@ -78,7 +78,7 @@ const form = ref({
   nama_tamu: '',
   alamat_jabatan: '',
   keperluan: '',
-  mhs_penyambut_id: ''
+  mhs_penyambut_ids: []
 });
 
 const editingId = ref(null);
@@ -208,7 +208,7 @@ const closeForm = () => {
     nama_tamu: '',
     alamat_jabatan: '',
     keperluan: '',
-    mhs_penyambut_id: ''
+    mhs_penyambut_ids: []
   };
 };
 
@@ -219,7 +219,14 @@ const editTamu = (t) => {
     nama_tamu: t.nama_tamu,
     alamat_jabatan: t.alamat_jabatan,
     keperluan: t.keperluan,
-    mhs_penyambut_id: t.mhs_penyambut_id || ''
+    mhs_penyambut_ids: (() => {
+      let ids = t.mhs_penyambut_ids;
+      if (typeof ids === 'string') {
+        try { ids = JSON.parse(ids); } catch(e) { ids = []; }
+      }
+      if (Array.isArray(ids) && ids.length > 0) return ids;
+      return t.mhs_penyambut_id ? [t.mhs_penyambut_id] : [];
+    })()
   };
   showForm.value = true;
 };
@@ -315,6 +322,20 @@ const formatDateWithDay = (dateStr) => {
   return `${dayName}, ${d}/${m}/${y}`;
 };
 
+const getNamaPenyambut = (t) => {
+  let ids = t.mhs_penyambut_ids;
+  if (typeof ids === 'string') {
+    try { ids = JSON.parse(ids); } catch(e) { ids = []; }
+  }
+  if (ids && Array.isArray(ids) && ids.length > 0) {
+    return props.users
+      .filter(u => ids.includes(u.id))
+      .map(u => u.nama_lengkap)
+      .join(', ');
+  }
+  return t.nama_penyambut || '-';
+};
+
 const cetakPdf = () => {
   if (printConfigMode.value === 'otomatis') {
     loadLocationFromMap();
@@ -398,7 +419,7 @@ watch(showForm, async (newVal) => {
             <td style="padding: 1rem; font-weight: 500;">{{ t.nama_tamu }}</td>
             <td style="padding: 1rem;">{{ t.alamat_jabatan }}</td>
             <td style="padding: 1rem; font-size: 0.9rem;">{{ t.keperluan }}</td>
-            <td style="padding: 1rem; color: var(--color-primary);">{{ t.nama_penyambut || '-' }}</td>
+            <td style="padding: 1rem; color: var(--color-primary);">{{ getNamaPenyambut(t) }}</td>
             <td style="padding: 1rem; text-align: center;">
               <img v-if="t.ttd_tamu_url" :src="t.ttd_tamu_url" style="height: 40px; max-width: 80px; object-fit: contain;" />
             </td>
@@ -482,9 +503,8 @@ watch(showForm, async (newVal) => {
             <!-- Right Column -->
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
               <div>
-                <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Mahasiswa yang Menemui (Opsional)</label>
-                <select v-model="form.mhs_penyambut_id" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; background: white;">
-                  <option value="">-- Tidak Spesifik / Semua --</option>
+                <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Mahasiswa yang Menemui (Tahan CTRL untuk pilih banyak)</label>
+                <select multiple v-model="form.mhs_penyambut_ids" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-height: 100px;">
                   <option v-for="u in props.users" :key="u.id" :value="u.id">{{ u.nama_lengkap }}</option>
                 </select>
               </div>
@@ -560,7 +580,7 @@ watch(showForm, async (newVal) => {
                 <td style="border: 1px solid black; padding: 8px;">{{ t.nama_tamu }}</td>
                 <td style="border: 1px solid black; padding: 8px;">{{ t.alamat_jabatan }}</td>
                 <td style="border: 1px solid black; padding: 8px;">{{ t.keperluan }}</td>
-                <td style="border: 1px solid black; padding: 8px; text-align: center;">{{ t.nama_penyambut || '-' }}</td>
+                <td style="border: 1px solid black; padding: 8px; text-align: center;">{{ getNamaPenyambut(t) }}</td>
                 <td style="border: 1px solid black; padding: 2px; text-align: center; vertical-align: middle; height: 50px;">
                   <img v-if="t.ttd_tamu_url" :src="t.ttd_tamu_url" style="max-height: 45px; max-width: 60px;" />
                 </td>
