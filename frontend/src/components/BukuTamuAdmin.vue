@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue';
 import html2pdf from 'html2pdf.js';
-import { useToast } from '../composables/useNotification.js';
+import { useToast, useConfirm } from '../composables/useNotification.js';
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -10,6 +10,7 @@ const props = defineProps({
 });
 
 const { success: toastSuccess, error: toastError } = useToast();
+const { confirm } = useConfirm();
 const tamuList = ref([]);
 const showForm = ref(false);
 const isSubmitting = ref(false);
@@ -173,7 +174,13 @@ const editTamu = (t) => {
 };
 
 const deleteTamu = async (id) => {
-  if (!confirm('Apakah Anda yakin ingin menghapus buku tamu ini?')) return;
+  const confirmed = await confirm({
+    title: 'Hapus Buku Tamu?',
+    message: 'Apakah Anda yakin ingin menghapus buku tamu ini?',
+    confirmText: 'Ya, Hapus',
+    type: 'danger'
+  });
+  if (!confirmed) return;
 
   try {
     const res = await fetch(`/api/admin/buku-tamu/${id}`, {
