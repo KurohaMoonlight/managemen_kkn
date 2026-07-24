@@ -6,6 +6,7 @@ import SuperadminDashboard from '../views/SuperadminDashboard.vue';
 import BendaharaDashboard from '../views/BendaharaDashboard.vue';
 import BlockedPosko from '../views/BlockedPosko.vue';
 import PddDashboard from '../views/PddDashboard.vue';
+import Maintenance from '../views/Maintenance.vue';
 
 import SuratGenerator from '../components/SuratGenerator.vue';
 
@@ -13,6 +14,11 @@ const routes = [
   {
     path: '/',
     redirect: '/login'
+  },
+  {
+    path: '/maintenance',
+    name: 'Maintenance',
+    component: Maintenance
   },
   {
     path: '/login',
@@ -69,7 +75,22 @@ const router = createRouter({
 });
 
 // Navigation Guard
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
+  // 1. Cek Maintenance Mode
+  try {
+    const res = await fetch('/api/maintenance');
+    const data = await res.json();
+    if (data.is_maintenance && to.path !== '/maintenance') {
+      return next('/maintenance');
+    }
+    if (!data.is_maintenance && to.path === '/maintenance') {
+      return next('/');
+    }
+  } catch (error) {
+    console.error('Gagal mengecek status maintenance', error);
+  }
+
+  // 2. Lanjut ke pengecekan otentikasi
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || 'null');
 

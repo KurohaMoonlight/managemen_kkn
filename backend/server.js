@@ -96,6 +96,23 @@ const compressImages = async (req, res, next) => {
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ─── MAINTENANCE CHECK ─────────────────────────────────────────────────────────
+app.get('/api/maintenance', (req, res) => {
+  try {
+    const maintenancePath = path.join(__dirname, '../maintenance.json');
+    if (fs.existsSync(maintenancePath)) {
+      const data = fs.readFileSync(maintenancePath, 'utf8');
+      res.json(JSON.parse(data));
+    } else {
+      res.json({ is_maintenance: false });
+    }
+  } catch (error) {
+    console.error('Error reading maintenance.json:', error);
+    res.json({ is_maintenance: false });
+  }
+});
+
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
