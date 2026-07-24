@@ -82,6 +82,16 @@ const form = ref({
 });
 
 const editingId = ref(null);
+const searchMhs = ref('');
+const showDropdown = ref(false);
+
+const filteredMhs = computed(() => {
+  return props.users.filter(u => {
+    const notSelected = !form.value.mhs_penyambut_ids.includes(u.id);
+    const matchesSearch = u.nama_lengkap.toLowerCase().includes(searchMhs.value.toLowerCase());
+    return notSelected && matchesSearch;
+  });
+});
 
 // Canvas Signature Refs
 const sigCanvas = ref(null);
@@ -203,6 +213,8 @@ const uploadAndExtractSignature = async (event) => {
 const closeForm = () => {
   showForm.value = false;
   editingId.value = null;
+  searchMhs.value = '';
+  showDropdown.value = false;
   form.value = {
     tanggal: new Date().toISOString().split('T')[0],
     nama_tamu: '',
@@ -503,10 +515,35 @@ watch(showForm, async (newVal) => {
             <!-- Right Column -->
             <div style="display: flex; flex-direction: column; gap: 1.25rem;">
               <div>
-                <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Mahasiswa yang Menemui (Tahan CTRL untuk pilih banyak)</label>
-                <select multiple v-model="form.mhs_penyambut_ids" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; background: white; min-height: 100px;">
-                  <option v-for="u in props.users" :key="u.id" :value="u.id">{{ u.nama_lengkap }}</option>
-                </select>
+                <label style="display: block; font-weight: 600; margin-bottom: 0.3rem;">Cari Mahasiswa yang Menemui</label>
+                <div style="position: relative;">
+                  <input type="text" v-model="searchMhs" @focus="showDropdown = true" placeholder="Ketik nama mahasiswa..." style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;" />
+                  
+                  <!-- Dropdown -->
+                  <div v-if="showDropdown && filteredMhs.length > 0" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 10; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                    <div v-for="u in filteredMhs" :key="u.id" @click="form.mhs_penyambut_ids.push(u.id); searchMhs = ''; showDropdown = false;" style="padding: 0.75rem; cursor: pointer; border-bottom: 1px solid #f1f5f9;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor='transparent'">
+                      {{ u.nama_lengkap }}
+                    </div>
+                  </div>
+                  
+                  <div v-if="showDropdown && filteredMhs.length === 0" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px; padding: 0.75rem; color: #64748b; z-index: 10; text-align: center;">
+                    Semua mahasiswa sudah dipilih / tidak ditemukan
+                  </div>
+                  
+                  <!-- Click outside overlay -->
+                  <div v-if="showDropdown" @click="showDropdown = false" style="position: fixed; inset: 0; z-index: 9;"></div>
+                </div>
+              </div>
+
+              <!-- Selected List -->
+              <div v-if="form.mhs_penyambut_ids.length > 0" style="margin-top: 0.5rem;">
+                <p style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem; color: #475569;">Daftar Terpilih:</p>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  <div v-for="id in form.mhs_penyambut_ids" :key="id" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <span>{{ props.users.find(u => u.id === id)?.nama_lengkap }}</span>
+                    <button type="button" @click="form.mhs_penyambut_ids = form.mhs_penyambut_ids.filter(i => i !== id)" style="background: none; border: none; color: #ef4444; cursor: pointer; font-weight: bold; font-size: 1.25rem; line-height: 1; padding: 0 0.25rem;">&times;</button>
+                  </div>
+                </div>
               </div>
               
               <div v-if="!editingId">
