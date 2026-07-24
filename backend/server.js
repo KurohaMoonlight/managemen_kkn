@@ -118,6 +118,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── MAINTENANCE INTERCEPTOR UNTUK SEMUA API ─────────────────────────────────
+app.use('/api', (req, res, next) => {
+  if (req.path === '/maintenance') return next(); // Abaikan rute cek status
+  
+  try {
+    const maintenancePath = path.join(__dirname, '../maintenance.json');
+    if (fs.existsSync(maintenancePath)) {
+      const data = JSON.parse(fs.readFileSync(maintenancePath, 'utf8'));
+      if (data.is_maintenance) {
+        return res.status(503).json({ message: data.message || 'Sistem sedang dalam perbaikan rutin.' });
+      }
+    }
+  } catch (error) {
+    console.error('Error intercepting maintenance:', error);
+  }
+  next();
+});
+
 // ─── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
