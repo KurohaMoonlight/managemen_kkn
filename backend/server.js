@@ -383,6 +383,8 @@ const initializeDb = async () => {
     try { await pool.query('ALTER TABLE posko ADD COLUMN default_min_anggota INT DEFAULT 2'); } catch(e) { /* already exists */ }
     try { await pool.query('ALTER TABLE posko ADD COLUMN default_max_anggota INT DEFAULT NULL'); } catch(e) { /* already exists */ }
     try { await pool.query('ALTER TABLE posko ADD COLUMN iuran_interval VARCHAR(20) DEFAULT "sekali"'); } catch(e) { /* already exists */ }
+    try { await pool.query('ALTER TABLE posko ADD COLUMN iuran_nominal_base DECIMAL(15,2) DEFAULT 0'); } catch(e) { /* already exists */ }
+    try { await pool.query('ALTER TABLE posko ADD COLUMN iuran_last_accrued DATE DEFAULT NULL'); } catch(e) { /* already exists */ }
 
     // Migration: pic_groups min/max anggota
     try { await pool.query('ALTER TABLE pic_groups ADD COLUMN min_anggota INT DEFAULT NULL'); } catch(e) { /* already exists */ }
@@ -2505,10 +2507,73 @@ app.get('/api/bendahara/summary', authenticateToken, requireBendaharaOrAdmin, as
 });
 
 // ─── FITUR IURAN ANGGOTA ────────────────────────────────────────────────────────
+
+// Helper to accrue iuran (add base target to current target for all users in a posko)
+export const accrueIuran = async (posko_id) => {
+  const [posko] = await pool.query('SELECT iuran_nominal_base FROM posko WHERE id = ?', [posko_id]);
+  const baseTarget = Math.round(Number(posko[0]?.iuran_nominal_base) || 0);
+  if (baseTarget > 0) {
+    // Increment nominal_target
+    await pool.query(`
+      UPDATE keuangan_iuran
+      SET nominal_target = nominal_target + ?
+      WHERE posko_id = ?
+    `, [baseTarget, posko_id]);
+    
+    // Recalculate status
+    await pool.query(`
+      UPDATE keuangan_iuran
+      SET status = CASE
+        WHEN nominal_terbayar >= nominal_target AND nominal_target > 0 THEN 'lunas'
+        WHEN nominal_terbayar > 0 THEN 'sebagian'
+        ELSE 'belum'
+      END
+      WHERE posko_id = ?
+    `, [posko_id]);
+
+    // Update last_accrued
+    await pool.query('UPDATE posko SET iuran_last_accrued = CURDATE() WHERE id = ?', [posko_id]);
+  }
+};
+
+// CRON JOB: Cek setiap hari jam 00:00 untuk menagih iuran otomatis jika siklus tercapai
+cron.schedule('0 0 * * *', async () => {
+  try {
+    const [poskos] = await pool.query('SELECT id, iuran_interval, iuran_last_accrued FROM posko WHERE iuran_interval != "sekali" AND iuran_nominal_base > 0 AND iuran_last_accrued IS NOT NULL');
+    for (const p of poskos) {
+      const [diffRows] = await pool.query('SELECT DATEDIFF(CURDATE(), ?) as diff', [p.iuran_last_accrued]);
+      const diff = diffRows[0].diff;
+      let shouldAccrue = false;
+      if (p.iuran_interval === 'harian' && diff >= 1) shouldAccrue = true;
+      else if (p.iuran_interval === 'mingguan' && diff >= 7) shouldAccrue = true;
+      else if (p.iuran_interval === 'bulanan' && diff >= 30) shouldAccrue = true;
+      
+      if (shouldAccrue) {
+        console.log(`[CRON] Menggulirkan iuran otomatis untuk Posko ID: ${p.id} (interval: ${p.iuran_interval})`);
+        await accrueIuran(p.id);
+      }
+    }
+  } catch (error) {
+    console.error('Error in iuran cron job:', error);
+  }
+});
+
+app.post('/api/bendahara/iuran/accrue', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
+  try {
+    await accrueIuran(req.user.posko_id);
+    res.json({ success: true, message: 'Siklus tagihan baru berhasil digulirkan.' });
+  } catch (error) {
+    console.error('Error accruing iuran:', error);
+    res.status(500).json({ message: 'Gagal menggulirkan tagihan.' });
+  }
+});
+
 app.get('/api/bendahara/iuran', authenticateToken, requireBendaharaOrAdmin, async (req, res) => {
   try {
-    const [poskoRows] = await pool.query('SELECT iuran_interval FROM posko WHERE id = ?', [req.user.posko_id]);
+    const [poskoRows] = await pool.query('SELECT iuran_interval, iuran_nominal_base, iuran_last_accrued FROM posko WHERE id = ?', [req.user.posko_id]);
     const iuran_interval = poskoRows[0]?.iuran_interval || 'sekali';
+    const iuran_nominal_base = Math.round(Number(poskoRows[0]?.iuran_nominal_base) || 0);
+    const iuran_last_accrued = poskoRows[0]?.iuran_last_accrued;
 
     const [rows] = await pool.query(`
       SELECT u.id as user_id, u.nim, u.nama_lengkap, u.jabatan,
@@ -2525,7 +2590,7 @@ app.get('/api/bendahara/iuran', authenticateToken, requireBendaharaOrAdmin, asyn
       nominal_target: Math.round(Number(r.nominal_target) || 0),
       nominal_terbayar: Math.round(Number(r.nominal_terbayar) || 0),
     }));
-    res.json({ list, iuran_interval });
+    res.json({ list, iuran_interval, iuran_nominal_base, iuran_last_accrued });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil data iuran.' });
   }
@@ -2539,9 +2604,19 @@ app.post('/api/bendahara/iuran/target', authenticateToken, requireBendaharaOrAdm
       return res.status(400).json({ message: 'Target iuran harus lebih dari 0.' });
     }
     
-    // Simpan iuran_interval ke tabel posko
+    // Simpan iuran_interval, nominal_base, dan set last_accrued ke hari ini
     if (iuran_interval) {
-      await pool.query('UPDATE posko SET iuran_interval = ? WHERE id = ?', [iuran_interval, req.user.posko_id]);
+      await pool.query(`
+        UPDATE posko 
+        SET iuran_interval = ?, iuran_nominal_base = ?, iuran_last_accrued = CURDATE() 
+        WHERE id = ?
+      `, [iuran_interval, targetAmount, req.user.posko_id]);
+    } else {
+      await pool.query(`
+        UPDATE posko 
+        SET iuran_nominal_base = ?, iuran_last_accrued = CURDATE() 
+        WHERE id = ?
+      `, [targetAmount, req.user.posko_id]);
     }
 
     const [users] = await pool.query('SELECT id FROM users WHERE posko_id = ? AND role != "superadmin"', [req.user.posko_id]);

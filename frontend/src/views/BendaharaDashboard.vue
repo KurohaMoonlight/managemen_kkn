@@ -33,6 +33,8 @@ const isSettingTarget = ref(false);
 const pengajuanList = ref([]);
 const pengajuanProcessingId = ref(null);
 const iuranInterval = ref('sekali');
+const iuranNominalBase = ref(0);
+const iuranLastAccrued = ref(null);
 
 const iuranIntervalLabels = {
   sekali: 'Sekali (Sekali Bayar)',
@@ -142,6 +144,8 @@ const fetchIuran = async () => {
       const data = await res.json();
       iuranList.value = data.list || [];
       iuranInterval.value = data.iuran_interval || 'sekali';
+      iuranNominalBase.value = data.iuran_nominal_base || 0;
+      iuranLastAccrued.value = data.iuran_last_accrued || null;
       if (iuranList.value.length > 0 && iuranList.value[0].nominal_target) {
         iuranTarget.value = parseCurrencyInput(iuranList.value[0].nominal_target);
       }
@@ -472,6 +476,31 @@ const promptBayarIuran = async (userObj) => {
       toastError(data.message || 'Gagal mencatat pembayaran.');
     }
   } catch(e) { console.error(e) }
+};
+
+const triggerAccrueManual = async () => {
+  if (!(await confirm({
+    title: 'Tambah Tagihan Siklus Baru?',
+    message: `Apakah Anda yakin ingin menggulirkan tagihan baru untuk periode ini?\n\nSemua anggota akan ditagih lagi sebesar ${formatRupiah(iuranNominalBase.value)} berdasarkan pengaturan target dasar.`,
+    type: 'warning',
+    confirmText: 'Ya, Gulirkan Tagihan',
+  }))) return;
+
+  try {
+    const res = await fetch('/api/bendahara/iuran/accrue', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token.value}` }
+    });
+    if (res.ok) {
+      toastSuccess('Siklus tagihan baru berhasil digulirkan!');
+      fetchIuran();
+    } else {
+      toastError('Gagal menggulirkan tagihan.');
+    }
+  } catch(e) {
+    console.error(e);
+    toastError('Terjadi kesalahan jaringan.');
+  }
 };
 
 // --- PENGAJUAN METHODS ---
@@ -1046,9 +1075,22 @@ onBeforeUnmount(() => {
               <h2>Pemantau Iuran Anggota</h2>
               <p class="text-muted">
                 Pantau status pembayaran iuran wajib setiap anggota posko.
-                <span v-if="iuranInterval" style="display:inline-block;margin-top:0.25rem;padding:0.15rem 0.6rem;background:#e0f2fe;color:#0369a1;border-radius:99px;font-size:0.8rem;font-weight:600;">
-                  Periode: {{ iuranIntervalLabels[iuranInterval] || iuranInterval }}
-                </span>
+                <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap;">
+                  <span v-if="iuranInterval" style="padding:0.25rem 0.75rem;background:#e0f2fe;color:#0369a1;border-radius:99px;font-size:0.85rem;font-weight:600;">
+                    Periode: {{ iuranIntervalLabels[iuranInterval] || iuranInterval }}
+                  </span>
+                  <span v-if="iuranInterval !== 'sekali' && iuranLastAccrued" style="padding:0.25rem 0.75rem;background:#f1f5f9;color:#475569;border-radius:99px;font-size:0.85rem;">
+                    Terakhir Ditarik: {{ new Date(iuranLastAccrued).toLocaleDateString('id-ID') }}
+                  </span>
+                  <button 
+                    v-if="iuranInterval !== 'sekali' && iuranNominalBase > 0" 
+                    @click="triggerAccrueManual" 
+                    class="btn-primary btn-small" 
+                    style="background:#8b5cf6;border:none;padding:0.25rem 0.75rem;font-size:0.85rem;"
+                  >
+                    + Tambah Tagihan Siklus Baru
+                  </button>
+                </div>
               </p>
             </div>
             <div style="background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
