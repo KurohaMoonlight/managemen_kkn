@@ -76,23 +76,28 @@ const router = createRouter({
 
 // Navigation Guard
 router.beforeEach(async (to, from, next) => {
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const isSuperadmin = user && user.role === 'superadmin';
+
   // 1. Cek Maintenance Mode
   try {
     const res = await fetch('/api/maintenance');
     const data = await res.json();
-    if (data.is_maintenance && to.path !== '/maintenance') {
-      return next('/maintenance');
-    }
-    if (!data.is_maintenance && to.path === '/maintenance') {
-      return next('/');
+    if (data.is_maintenance) {
+      if (isSuperadmin) {
+        if (to.path === '/maintenance') return next('/');
+      } else {
+        if (to.path !== '/maintenance') return next('/maintenance');
+      }
+    } else {
+      if (to.path === '/maintenance') return next('/');
     }
   } catch (error) {
     console.error('Gagal mengecek status maintenance', error);
   }
 
   // 2. Lanjut ke pengecekan otentikasi
-  const token = localStorage.getItem('token');
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   const roleToPath = {
     superadmin: '/superadmin',

@@ -121,13 +121,26 @@ app.use((req, res, next) => {
 
 // ─── MAINTENANCE INTERCEPTOR UNTUK SEMUA API ─────────────────────────────────
 app.use('/api', (req, res, next) => {
-  if (req.path === '/maintenance') return next(); // Abaikan rute cek status
+  if (req.path === '/maintenance' || req.path === '/login') return next(); // Abaikan rute cek status dan login
   
   try {
     const maintenancePath = path.join(__dirname, '../maintenance.json');
     if (fs.existsSync(maintenancePath)) {
       const data = JSON.parse(fs.readFileSync(maintenancePath, 'utf8'));
       if (data.is_maintenance) {
+        // Cek JWT untuk bypass superadmin
+        const authHeader = req.headers['authorization'];
+        if (authHeader) {
+          const token = authHeader.split(' ')[1];
+          try {
+            const decoded = jwt.verify(token, JWT_SECRET);
+            if (decoded.role === 'superadmin') {
+              return next();
+            }
+          } catch (e) {
+            // Abaikan error token, biarkan diblokir 503
+          }
+        }
         return res.status(503).json({ message: data.message || 'Sistem sedang dalam perbaikan rutin.' });
       }
     }

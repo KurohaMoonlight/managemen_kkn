@@ -1,5 +1,9 @@
 <template>
   <div class="maintenance-container">
+    <!-- Star Indicator -->
+    <div v-if="typedChars > 0" class="secret-indicator">
+      {{ '*'.repeat(typedChars) }}
+    </div>
     <div class="animation-wrapper">
       <div class="wall">
         <div class="brick-row" v-for="r in 4" :key="'r-'+r">
@@ -29,15 +33,59 @@
       <h1 class="maintenance-title">Sistem Sedang Diperbaiki</h1>
       <p class="maintenance-message">{{ message }}</p>
     </div>
+
+    <!-- Secret Login Modal -->
+    <div v-if="showSecretLogin" class="secret-modal-overlay">
+      <div class="secret-modal-content">
+        <h2>Superadmin Override</h2>
+        <form @submit.prevent="handleSecretLogin">
+          <input type="text" v-model="username" placeholder="Username" required />
+          <input type="password" v-model="password" placeholder="Password" required />
+          <button type="submit" :disabled="isLoading">{{ isLoading ? 'Memproses...' : 'Login' }}</button>
+        </form>
+        <p v-if="loginError" class="error-msg">{{ loginError }}</p>
+        <button class="close-btn" @click="closeSecretLogin">Batal</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 
 const message = ref('Sistem sedang dalam perbaikan rutin. Silakan kembali lagi nanti.');
 
+// Secret Trigger Logic
+const secretCode = 'kkndebug';
+let currentInput = ''; // hapus currentInput yang lama, tidak dipakai lagi
+const typedChars = ref(0);
+const showSecretLogin = ref(false);
+
+const handleKeydown = (e) => {
+  if (showSecretLogin.value) return;
+
+  const key = e.key.toLowerCase();
+  
+  if (/^[a-z]$/.test(key)) {
+    if (key === secretCode[typedChars.value]) {
+       typedChars.value++;
+       if (typedChars.value === secretCode.length) {
+           showSecretLogin.value = true;
+           typedChars.value = 0;
+       }
+    } else {
+       // Reset langsung jika salah ketik. 
+       // Namun jika huruf yang salah ketik itu ternyata adalah huruf pertama dari kode (k),
+       // kita mulai ulang hitungannya dari 1.
+       typedChars.value = (key === secretCode[0]) ? 1 : 0;
+    }
+  } else {
+    typedChars.value = 0;
+  }
+};
+
 onMounted(async () => {
+  window.addEventListener('keydown', handleKeydown);
   try {
     const res = await fetch('/api/maintenance');
     const data = await res.json();
@@ -48,9 +96,156 @@ onMounted(async () => {
     console.error(err);
   }
 });
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
+
+// Secret Login Logic
+const username = ref('');
+const password = ref('');
+const isLoading = ref(false);
+const loginError = ref('');
+
+const closeSecretLogin = () => {
+  showSecretLogin.value = false;
+  username.value = '';
+  password.value = '';
+  loginError.value = '';
+};
+
+const handleSecretLogin = async () => {
+  isLoading.value = true;
+  loginError.value = '';
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.value, password: password.value })
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data.user.role === 'superadmin') {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = '/superadmin';
+      } else {
+        loginError.value = 'Hanya superadmin yang diizinkan masuk.';
+      }
+    } else {
+      const data = await res.json();
+      loginError.value = data.message || 'Login gagal.';
+    }
+  } catch (error) {
+    loginError.value = 'Terjadi kesalahan jaringan.';
+  } finally {
+    isLoading.value = false;
+  }
+};
 </script>
 
 <style scoped>
+.secret-indicator {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  font-size: 1.5rem;
+  color: #94a3b8;
+  letter-spacing: 0.2rem;
+  opacity: 0.7;
+}
+
+.secret-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.secret-modal-content {
+  background: #1e293b;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  color: white;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  border: 1px solid #334155;
+  text-align: left;
+}
+
+.secret-modal-content h2 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #e2e8f0;
+  font-size: 1.25rem;
+  text-align: center;
+}
+
+.secret-modal-content form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.secret-modal-content input {
+  padding: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: white;
+  outline: none;
+}
+
+.secret-modal-content input:focus {
+  border-color: #3b82f6;
+}
+
+.secret-modal-content button[type="submit"] {
+  background: #3b82f6;
+  color: white;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.secret-modal-content button[type="submit"]:hover {
+  background: #2563eb;
+}
+
+.secret-modal-content button[type="submit"]:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+.close-btn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 1rem;
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  color: white;
+}
+
+.error-msg {
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 1rem;
+  text-align: center;
+}
+
 .maintenance-container {
   display: flex;
   flex-direction: column;
