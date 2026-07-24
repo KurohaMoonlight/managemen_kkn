@@ -3283,8 +3283,9 @@ app.post('/api/admin/extract-signature', authenticateToken, upload.single('signa
   const outputPath = path.join(__dirname, 'uploads', `extracted_${Date.now()}.png`);
   const scriptPath = path.join(__dirname, 'extract_signature.py');
 
-  // Asumsi 'python' ada di PATH
-  exec(`python "${scriptPath}" "${inputPath}" "${outputPath}"`, (error, stdout, stderr) => {
+  // Gunakan 'python3' untuk Linux/Mac, 'python' untuk Windows
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  exec(`${pythonCmd} "${scriptPath}" "${inputPath}" "${outputPath}"`, (error, stdout, stderr) => {
     if (error) {
       console.error('Python Error:', error);
       console.error('Stderr:', stderr);
