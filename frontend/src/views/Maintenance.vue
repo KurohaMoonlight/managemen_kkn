@@ -3,9 +3,20 @@
     <div class="animation-wrapper">
       <div class="wall">
         <div class="brick-row" v-for="r in 4" :key="'r-'+r">
-          <div class="brick" v-for="b in 3" :key="'b-'+b"></div>
+          <!-- Buat bata di baris pertama dan kedua sedikit hancur -->
+          <div class="brick" 
+               v-for="b in 3" 
+               :key="'b-'+b" 
+               :class="{'broken': (r === 1 && b === 3) || (r === 2 && b === 2)}">
+          </div>
         </div>
       </div>
+      
+      <!-- Efek puing-puing (debris) yang terbang saat dipalu -->
+      <div class="debris debris-1"></div>
+      <div class="debris debris-2"></div>
+      <div class="debris debris-3"></div>
+
       <div class="hammer-container">
         <div class="hammer">
           <div class="hammer-head"></div>
@@ -15,7 +26,7 @@
     </div>
     
     <div class="maintenance-content">
-      <h1 class="maintenance-title">Under Maintenance</h1>
+      <h1 class="maintenance-title">Sistem Sedang Diperbaiki</h1>
       <p class="maintenance-message">{{ message }}</p>
     </div>
   </div>
@@ -51,6 +62,7 @@ onMounted(async () => {
   color: #334155;
   text-align: center;
   padding: 2rem;
+  overflow: hidden;
 }
 
 .animation-wrapper {
@@ -75,6 +87,7 @@ onMounted(async () => {
   overflow: hidden;
   position: relative;
   z-index: 1;
+  animation: wall-shake 2s infinite linear;
 }
 
 .brick-row {
@@ -93,7 +106,37 @@ onMounted(async () => {
   border: 1px solid #f8fafc;
   background: #e2e8f0;
   flex-shrink: 0;
+  position: relative;
 }
+
+/* Efek retakan pada bata tertentu */
+.brick.broken::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    linear-gradient(45deg, transparent 40%, rgba(0,0,0,0.1) 45%, transparent 50%),
+    linear-gradient(-45deg, transparent 30%, rgba(0,0,0,0.1) 35%, transparent 40%);
+  animation: crack-appear 2s infinite linear;
+}
+
+/* Debris Styles */
+.debris {
+  position: absolute;
+  width: 12px;
+  height: 8px;
+  background: #cbd5e1;
+  border: 1px solid #94a3b8;
+  z-index: 3;
+  opacity: 0;
+}
+
+.debris-1 { right: 80px; top: 100px; animation: fly-1 2s infinite linear; }
+.debris-2 { right: 70px; top: 110px; animation: fly-2 2s infinite linear; }
+.debris-3 { right: 90px; top: 120px; animation: fly-3 2s infinite linear; }
 
 /* Hammer Styles */
 .hammer-container {
@@ -102,9 +145,9 @@ onMounted(async () => {
   bottom: 0px;
   width: 100px;
   height: 150px;
-  transform-origin: bottom center;
-  z-index: 2;
-  animation: hit 1.5s infinite ease-in-out;
+  transform-origin: bottom right;
+  z-index: 4;
+  animation: hit 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .hammer {
@@ -121,8 +164,9 @@ onMounted(async () => {
   left: -20px;
   width: 60px;
   height: 30px;
-  background: #475569;
+  background: #334155;
   border-radius: 4px;
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,0.2);
 }
 
 .hammer-head::after {
@@ -133,7 +177,7 @@ onMounted(async () => {
   transform: translateY(-50%);
   width: 10px;
   height: 14px;
-  background: #64748b;
+  background: #475569;
   border-radius: 2px 0 0 2px;
 }
 
@@ -145,15 +189,54 @@ onMounted(async () => {
   height: 70px;
   background: #b45309;
   border-radius: 0 0 4px 4px;
+  box-shadow: inset -2px 0 0 rgba(0,0,0,0.2);
 }
 
-/* Hammer Animation */
+/* Animations */
 @keyframes hit {
   0% { transform: rotate(0deg); }
-  20% { transform: rotate(45deg); }
-  40% { transform: rotate(-30deg); }
-  50% { transform: rotate(0deg); }
+  45% { transform: rotate(60deg); }
+  50% { transform: rotate(-30deg); } /* Impact! */
+  55% { transform: rotate(-10deg); } /* Bounce */
+  60% { transform: rotate(-25deg); } /* Settle */
+  70% { transform: rotate(0deg); }
   100% { transform: rotate(0deg); }
+}
+
+@keyframes wall-shake {
+  0%, 49% { transform: translateX(0); }
+  50% { transform: translateX(-4px) rotate(-1deg); } /* Pukulan masuk */
+  52% { transform: translateX(4px) rotate(1deg); }
+  54% { transform: translateX(-2px) rotate(0deg); }
+  56% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes crack-appear {
+  0%, 49% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes fly-1 {
+  0%, 49% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  50% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  70% { opacity: 0; transform: translate(30px, -40px) rotate(120deg) scale(0.5); }
+  100% { opacity: 0; }
+}
+
+@keyframes fly-2 {
+  0%, 49% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  50% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  75% { opacity: 0; transform: translate(50px, -20px) rotate(-150deg) scale(0.8); }
+  100% { opacity: 0; }
+}
+
+@keyframes fly-3 {
+  0%, 49% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  50% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  65% { opacity: 0; transform: translate(15px, -50px) rotate(90deg) scale(0.4); }
+  100% { opacity: 0; }
 }
 
 .maintenance-content {
@@ -162,14 +245,15 @@ onMounted(async () => {
 
 .maintenance-title {
   font-size: 2.5rem;
-  font-weight: 700;
-  color: #1e293b;
+  font-weight: 800;
+  color: #0f172a;
   margin-bottom: 1rem;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .maintenance-message {
-  font-size: 1.1rem;
-  color: #64748b;
+  font-size: 1.15rem;
+  color: #475569;
   line-height: 1.6;
 }
 </style>
