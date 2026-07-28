@@ -1073,7 +1073,7 @@ onBeforeUnmount(() => {
           <div class="card-header" style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
             <div>
               <h2>Pemantau Iuran Anggota</h2>
-              <p class="text-muted">
+              <div class="text-muted">
                 Pantau status pembayaran iuran wajib setiap anggota posko.
                 <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap;">
                   <span v-if="iuranInterval" style="padding:0.25rem 0.75rem;background:#e0f2fe;color:#0369a1;border-radius:99px;font-size:0.85rem;font-weight:600;">
@@ -1091,7 +1091,7 @@ onBeforeUnmount(() => {
                     + Tambah Tagihan Siklus Baru
                   </button>
                 </div>
-              </p>
+              </div>
             </div>
             <div style="background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
               <div>

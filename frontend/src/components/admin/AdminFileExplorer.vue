@@ -358,7 +358,7 @@ defineExpose({ fetchDirectory, init });
 
         <!-- PDF Preview -->
         <iframe v-else-if="previewFile.tipe_file.includes('pdf')" :src="previewFile.url_file" style="width: 100%; height: 100%; border: none;">
-          <p>PDF tidak dapat ditampilkan.</p>
+          PDF tidak dapat ditampilkan.
         </iframe>
 
         <div v-else class="text-muted text-center" style="color:white;">
