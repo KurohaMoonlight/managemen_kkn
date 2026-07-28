@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, onUnmounted } from 'vue';
 import html2pdf from 'html2pdf.js';
 import { useToast } from '../../composables/useNotification.js';
 
@@ -27,6 +27,200 @@ const logbookFiles = ref([]);
 const isSubmittingLogbook = ref(false);
 const previewImageUrl = ref(null);
 const fileInputRef = ref(null);
+
+// --- CONTEXT MENU STATE ---
+const contextMenu = ref({ show: false, x: 0, y: 0, log: null });
+
+const closeContextMenu = () => {
+  contextMenu.value.show = false;
+};
+
+onMounted(() => {
+  document.addEventListener('click', closeContextMenu);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeContextMenu);
+});
+
+const handleContextMenu = (e, log) => {
+  if (log.user_id !== props.user.id) return;
+  e.preventDefault();
+  contextMenu.value = {
+    show: true,
+    x: e.clientX,
+    y: e.clientY,
+    log
+  };
+};
+
+// --- DELETE LOGBOOK STATE ---
+const showDeleteModal = ref(false);
+const deletePassword = ref('');
+const isDeletingLogbook = ref(false);
+
+const promptDeleteLogbook = () => {
+  showDeleteModal.value = true;
+  deletePassword.value = '';
+};
+
+const confirmDeleteLogbook = async () => {
+  if (!deletePassword.value) {
+    toastWarning('Password wajib diisi!');
+    return;
+  }
+  isDeletingLogbook.value = true;
+  try {
+    const res = await fetch(`/api/mahasiswa/logbook/${contextMenu.value.log.id}`, {
+      method: 'DELETE',
+      headers: { 
+        'Authorization': `Bearer ${props.token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password: deletePassword.value })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      toastSuccess('Logbook berhasil dihapus!');
+      showDeleteModal.value = false;
+      await fetchLogbooks();
+      emit('refresh-explorer');
+    } else {
+      toastError(data.message || 'Gagal menghapus logbook');
+    }
+  } catch (error) {
+    toastError('Terjadi kesalahan jaringan.');
+  } finally {
+    isDeletingLogbook.value = false;
+  }
+};
+
+// --- EDIT LOGBOOK STATE ---
+const showEditModal = ref(false);
+const isEditingLogbook = ref(false);
+const editLogbookForm = ref({
+  tanggal: '',
+  waktu_mulai: '',
+  waktu_selesai: '',
+  tempat: '',
+  sasaran: '',
+  deskripsi: ''
+});
+const editLogbookPhotos = ref([]); // Existing photos
+const editLogbookFiles = ref([]);  // New uploaded files
+const editDeletedFiles = ref([]);  // IDs of deleted photos + old PDF
+const editFileInputRef = ref(null);
+
+const openEditModal = () => {
+  const log = contextMenu.value.log;
+  // Format dates for input type date/time if needed, but usually they are returned as string formats.
+  // We assume log.tanggal is a YYYY-MM-DD string or Date.
+  editLogbookForm.value = {
+    tanggal: new Date(log.tanggal).toISOString().split('T')[0],
+    waktu_mulai: log.waktu_mulai?.slice(0,5) || '',
+    waktu_selesai: log.waktu_selesai?.slice(0,5) || '',
+    tempat: log.tempat || '',
+    sasaran: log.sasaran || '',
+    deskripsi: log.deskripsi || ''
+  };
+  editLogbookPhotos.value = [...(log.photos || [])];
+  editLogbookFiles.value = [];
+  editDeletedFiles.value = [];
+  
+  // Find the old PDF to add it to deleted files on save (since we will generate a new one)
+  const oldPdf = editLogbookPhotos.value.find(p => p.nama_file.endsWith('.pdf'));
+  if (oldPdf) {
+    editDeletedFiles.value.push(oldPdf.id);
+    // Remove old PDF from displayed photos so user doesn't see it as a normal image
+    editLogbookPhotos.value = editLogbookPhotos.value.filter(p => p.id !== oldPdf.id);
+  }
+
+  showEditModal.value = true;
+};
+
+const handleEditFileSelect = (e) => {
+  editLogbookFiles.value = Array.from(e.target.files);
+};
+
+const removeExistingPhoto = (photoId) => {
+  editLogbookPhotos.value = editLogbookPhotos.value.filter(p => p.id !== photoId);
+  editDeletedFiles.value.push(photoId);
+};
+
+const saveEditLogbook = async () => {
+  const plainText = editLogbookForm.value.deskripsi.replace(/<[^>]+>/g, '').trim();
+  if (!plainText || !editLogbookForm.value.tanggal || !editLogbookForm.value.waktu_mulai || !editLogbookForm.value.waktu_selesai || !editLogbookForm.value.tempat) {
+    toastWarning('Mohon isi lengkap seluruh form wajib (Tanggal, Waktu, Tempat, dan Deskripsi).');
+    return;
+  }
+  isEditingLogbook.value = true;
+  
+  try {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = `
+      <div style="font-family: Arial, sans-serif; padding: 40px; color: #333;">
+        <h1 style="color: #0f172a; margin-bottom: 5px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Laporan Logbook Harian (Direvisi)</h1>
+        <p style="color: #64748b; margin-top: 15px; margin-bottom: 30px; font-size: 14px;">
+          <strong>Proker:</strong> ${props.prokerData.proker} (PIC: ${props.prokerData.nama_pic})<br>
+          <strong>Dilaporkan Oleh:</strong> ${props.user?.nama_lengkap || 'Mahasiswa'} (${props.user?.nim || '-'})<br>
+          <strong>Waktu Pelaporan/Revisi:</strong> ${new Date().toLocaleString('id-ID')}<br>
+          <strong>Pelaksanaan:</strong> ${editLogbookForm.value.tanggal} (${editLogbookForm.value.waktu_mulai} - ${editLogbookForm.value.waktu_selesai})<br>
+          <strong>Tempat:</strong> ${editLogbookForm.value.tempat}<br>
+          <strong>Sasaran:</strong> ${editLogbookForm.value.sasaran}<br>
+        </p>
+        <div style="font-size: 15px; line-height: 1.6; color: #1e293b;">
+          ${editLogbookForm.value.deskripsi}
+        </div>
+      </div>
+    `;
+
+    const opt = {
+      margin:       [10, 10, 10, 10],
+      filename:     `Laporan_Logbook_${new Date().toISOString().split('T')[0]}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    const pdfBlob = await html2pdf().from(tempDiv).set(opt).output('blob');
+
+    const formData = new FormData();
+    formData.append('tanggal', editLogbookForm.value.tanggal);
+    formData.append('waktu_mulai', editLogbookForm.value.waktu_mulai);
+    formData.append('waktu_selesai', editLogbookForm.value.waktu_selesai);
+    formData.append('tempat', editLogbookForm.value.tempat);
+    formData.append('sasaran', editLogbookForm.value.sasaran);
+    formData.append('deskripsi', editLogbookForm.value.deskripsi);
+    formData.append('deleted_files', JSON.stringify(editDeletedFiles.value));
+    
+    formData.append('photos', pdfBlob, opt.filename);
+    
+    editLogbookFiles.value.forEach(file => {
+      formData.append('photos', file);
+    });
+
+    const res = await fetch(`/api/mahasiswa/logbook/${contextMenu.value.log.id}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${props.token}` },
+      body: formData
+    });
+    
+    if (res.ok) {
+      showEditModal.value = false;
+      toastSuccess('Logbook berhasil diperbarui!');
+      await fetchLogbooks();
+      emit('refresh-explorer');
+    } else {
+      const data = await res.json();
+      toastError(data.message || 'Gagal memperbarui logbook');
+    }
+  } catch (error) {
+    console.error('Edit Logbook Error:', error);
+    toastError('Terjadi kesalahan sistem saat memperbarui logbook.');
+  } finally {
+    isEditingLogbook.value = false;
+  }
+};
 
 const fetchLogbooks = async () => {
   if (!props.prokerData?.id) return;
@@ -199,7 +393,9 @@ const submitLogbook = async () => {
     <h3 style="margin-top: 3.5rem; margin-bottom: 1.5rem; color: var(--text-main);">Riwayat Logbook Kelompok</h3>
     <div class="logbook-list" style="display: flex; flex-direction: column; gap: 1.5rem;">
       <div v-if="logbooks.length === 0" class="text-muted text-center" style="padding: 2rem; background: #f8fafc; border-radius: 12px; border: 1px dashed var(--border-color);">Belum ada logbook yang diunggah.</div>
-      <div v-for="log in logbooks" :key="log.id" class="logbook-item" style="border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 12px; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+      <div v-for="log in logbooks" :key="log.id" class="logbook-item" style="border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 12px; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"
+           @contextmenu="handleContextMenu($event, log)" 
+           :title="log.user_id === user.id ? 'Klik kanan untuk edit/hapus' : ''">
         <div class="log-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
           <strong style="color: var(--color-primary); font-size: 1.1rem;">{{ log.pembuat }}</strong>
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem;" class="log-header-right">
@@ -227,6 +423,79 @@ const submitLogbook = async () => {
             </a>
           </template>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTEXT MENU -->
+  <div v-if="contextMenu.show" 
+       :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+       class="context-menu" 
+       @click.stop>
+    <div class="context-menu-item" @click="openEditModal(); closeContextMenu()">✏️ Edit Logbook</div>
+    <div class="context-menu-item delete" @click="promptDeleteLogbook(); closeContextMenu()">🗑️ Hapus Logbook</div>
+  </div>
+
+  <!-- EDIT MODAL -->
+  <div v-if="showEditModal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;" @click.self="showEditModal = false">
+    <div class="modal-content" style="background: white; padding: 2rem; border-radius: 16px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+      <h3 style="margin-bottom: 1.5rem; color: var(--text-main);">✏️ Edit Logbook</h3>
+      <div class="form-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem;">Tanggal Kegiatan</label>
+          <input type="date" v-model="editLogbookForm.tanggal" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+        <div>
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem;">Tempat</label>
+          <input type="text" v-model="editLogbookForm.tempat" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+        <div>
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem;">Jam Mulai</label>
+          <input type="time" v-model="editLogbookForm.waktu_mulai" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+        <div>
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem;">Jam Selesai</label>
+          <input type="time" v-model="editLogbookForm.waktu_selesai" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+        <div class="span-full">
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem;">Sasaran</label>
+          <input type="text" v-model="editLogbookForm.sasaran" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+      </div>
+
+      <label style="display:block; margin-bottom: 0.5rem; font-weight: 600;">Deskripsi Kegiatan</label>
+      <QuillEditor theme="snow" v-model:content="editLogbookForm.deskripsi" contentType="html" style="height: 150px; margin-bottom: 1rem;" />
+
+      <label style="display:block; margin-top: 3.5rem; margin-bottom: 0.5rem; font-weight: 600;">Foto Saat Ini</label>
+      <div v-if="editLogbookPhotos.length > 0" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+        <div v-for="photo in editLogbookPhotos" :key="photo.id" style="position: relative; width: 100px; height: 100px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+          <img :src="photo.file_path" style="width: 100%; height: 100%; object-fit: cover;" />
+          <button @click="removeExistingPhoto(photo.id)" style="position: absolute; top: 4px; right: 4px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px;">✕</button>
+        </div>
+      </div>
+      <div v-else class="text-muted" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Tidak ada foto tambahan.</div>
+
+      <label style="display:block; margin-bottom: 0.5rem; font-weight: 600;">Tambah Foto Baru</label>
+      <input type="file" multiple accept="image/*" @change="handleEditFileSelect" ref="editFileInputRef" style="display:block; margin-bottom: 1.5rem; padding: 0.5rem; border: 1px dashed var(--color-primary); border-radius: 8px; width: 100%;" />
+
+      <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+        <button @click="showEditModal = false" class="btn-scan" style="background: #e2e8f0; color: #475569;">Batal</button>
+        <button @click="saveEditLogbook" class="btn-scan" :disabled="isEditingLogbook">{{ isEditingLogbook ? 'Menyimpan...' : 'Simpan Perubahan' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DELETE MODAL -->
+  <div v-if="showDeleteModal" class="modal-overlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;" @click.self="showDeleteModal = false">
+    <div class="modal-content" style="background: white; padding: 2rem; border-radius: 16px; width: 90%; max-width: 400px; text-align: center;">
+      <h3 style="color: #ef4444; margin-bottom: 1rem;">⚠️ Hapus Logbook?</h3>
+      <p style="color: #64748b; margin-bottom: 1.5rem; font-size: 0.95rem;">Tindakan ini tidak dapat dibatalkan. PDF Laporan dan foto-foto yang terkait juga akan dihapus.</p>
+      
+      <input type="password" v-model="deletePassword" placeholder="Masukkan password Anda" style="width: 100%; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 1.5rem; text-align: center;" />
+      
+      <div style="display: flex; gap: 1rem; justify-content: center;">
+        <button @click="showDeleteModal = false" class="btn-scan" style="background: #e2e8f0; color: #475569; width: 100%;">Batal</button>
+        <button @click="confirmDeleteLogbook" class="btn-scan" style="background: #ef4444; width: 100%;" :disabled="isDeletingLogbook">{{ isDeletingLogbook ? 'Menghapus...' : 'Hapus' }}</button>
       </div>
     </div>
   </div>
@@ -277,5 +546,35 @@ const submitLogbook = async () => {
 .span-full { grid-column: span 2; }
 @media (max-width: 600px) {
   .span-full { grid-column: span 1; }
+}
+
+.context-menu {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0;
+  z-index: 10000;
+  min-width: 150px;
+}
+.context-menu-item {
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #334155;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.context-menu-item:hover {
+  background: #f1f5f9;
+}
+.context-menu-item.delete {
+  color: #ef4444;
+}
+.context-menu-item.delete:hover {
+  background: #fef2f2;
 }
 </style>

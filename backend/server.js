@@ -1555,6 +1555,126 @@ app.post('/api/mahasiswa/logbook', authenticateToken, upload.array('photos', 10)
   }
 });
 
+// --- EDIT LOGBOOK ---
+app.put('/api/mahasiswa/logbook/:id', authenticateToken, upload.array('photos', 10), compressImages, async (req, res) => {
+  const { id } = req.params;
+  const { deskripsi, tanggal, waktu_mulai, waktu_selesai, tempat, sasaran } = req.body;
+  let deletedFiles = [];
+  try {
+    if (req.body.deleted_files) {
+      deletedFiles = JSON.parse(req.body.deleted_files);
+    }
+  } catch (e) {
+    console.error('Failed to parse deleted_files:', req.body.deleted_files);
+  }
+  const files = req.files;
+
+  try {
+    const [logbooks] = await pool.query('SELECT * FROM logbooks WHERE id = ?', [id]);
+    if (logbooks.length === 0) return res.status(404).json({ message: 'Logbook tidak ditemukan' });
+    const logbook = logbooks[0];
+
+    // Only creator can edit
+    if (logbook.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Anda tidak memiliki akses untuk mengubah logbook ini.' });
+    }
+
+    // Update text fields
+    await pool.query(
+      'UPDATE logbooks SET tanggal=?, waktu_mulai=?, waktu_selesai=?, tempat=?, sasaran=?, deskripsi=? WHERE id=?',
+      [tanggal, waktu_mulai, waktu_selesai, tempat, sasaran, deskripsi, id]
+    );
+
+    const folderId = logbook.folder_id_referensi;
+
+    // Remove deleted files
+    if (deletedFiles && deletedFiles.length > 0) {
+      const placeholders = deletedFiles.map(() => '?').join(',');
+      const [filesToDelete] = await pool.query(`SELECT * FROM arsip_files WHERE id IN (${placeholders}) AND folder_id = ?`, [...deletedFiles, folderId]);
+      
+      for (let f of filesToDelete) {
+        // Delete from DB
+        await pool.query('DELETE FROM arsip_files WHERE id = ?', [f.id]);
+        
+        // Delete from file system
+        const filePath = path.join(__dirname, f.url_file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    }
+
+    // Add new files
+    if (files && files.length > 0) {
+      for (let file of files) {
+        const filePath = '/uploads/' + file.filename;
+        await pool.query(
+          'INSERT INTO arsip_files (folder_id, nama_file, url_file, tipe_file, posko_id) VALUES (?, ?, ?, ?, ?)',
+          [folderId, file.originalname, filePath, file.mimetype, req.user.posko_id]
+        );
+      }
+    }
+
+    res.json({ success: true, message: 'Logbook berhasil diperbarui!' });
+  } catch (error) {
+    console.error('Logbook update error:', error);
+    res.status(500).json({ message: 'Gagal memperbarui logbook.' });
+  }
+});
+
+// --- HAPUS LOGBOOK ---
+app.delete('/api/mahasiswa/logbook/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body; // Can be in body if express allows it, or query
+
+  if (!password) {
+    return res.status(400).json({ message: 'Password wajib diisi untuk menghapus logbook.' });
+  }
+
+  try {
+    const [logbooks] = await pool.query('SELECT * FROM logbooks WHERE id = ?', [id]);
+    if (logbooks.length === 0) return res.status(404).json({ message: 'Logbook tidak ditemukan' });
+    const logbook = logbooks[0];
+
+    // Only creator can delete
+    if (logbook.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Anda tidak memiliki akses untuk menghapus logbook ini.' });
+    }
+
+    // Verify password
+    const [users] = await pool.query('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    const validPassword = await bcrypt.compare(password, users[0].password);
+    if (!validPassword) {
+      return res.status(401).json({ message: 'Password salah. Penghapusan dibatalkan.' });
+    }
+
+    // Delete associated files in folder_id_referensi
+    const folderId = logbook.folder_id_referensi;
+    if (folderId) {
+      const [filesToDelete] = await pool.query('SELECT * FROM arsip_files WHERE folder_id = ?', [folderId]);
+      for (let f of filesToDelete) {
+        const filePath = path.join(__dirname, f.url_file);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      await pool.query('DELETE FROM arsip_files WHERE folder_id = ?', [folderId]);
+      
+      // Optionally delete the folder itself if we want, but it might be safer to leave it or delete if empty.
+      // Usually, deleting the logbook's specific folder is fine.
+      await pool.query('DELETE FROM arsip_folders WHERE id = ?', [folderId]);
+    }
+
+    // Delete the logbook entry
+    await pool.query('DELETE FROM logbooks WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Logbook berhasil dihapus!' });
+  } catch (error) {
+    console.error('Logbook delete error:', error);
+    res.status(500).json({ message: 'Gagal menghapus logbook.' });
+  }
+});
+
 // ─── FILE EXPLORER ─────────────────────────────────────────────────────────────
 app.get('/api/arsip/directory', authenticateToken, async (req, res) => {
   const parentId = req.query.parentId || null;
