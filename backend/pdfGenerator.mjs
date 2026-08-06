@@ -195,6 +195,9 @@ export async function generateLogbookPDF(logbooks) {
     let photoHtml = '';
     const photoList = log.photos || [];
     for (const photo of photoList) {
+      const fileName = photo.nama_file || photo.url_file || photo.file_path || '';
+      if (!fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+      
       const b64 = getBase64Image(photo.url_file || photo.file_path);
       if (b64) {
         photoHtml = `<img src="${b64}" style="max-width: 90px; max-height: 90px; object-fit: cover;" />`;
