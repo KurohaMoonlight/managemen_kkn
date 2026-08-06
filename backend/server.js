@@ -14,6 +14,7 @@ import sharp from 'sharp';
 import { google } from 'googleapis';
 import cron from 'node-cron';
 import { setupBackupService } from './backupService.mjs';
+import { generateLogbookPDF } from './pdfGenerator.mjs';
 import { createRequire } from 'module';
 import { exec } from 'child_process';
 
@@ -3291,6 +3292,13 @@ app.get('/api/posko/:id/rekap-logbook', authenticateToken, async (req, res) => {
     logQuery += " ORDER BY l.tanggal ASC, l.waktu_mulai ASC, l.created_at ASC";
     const [logbooks] = await pool.query(logQuery, queryParams);
     
+    if (req.query.pdf === 'true') {
+      const pdfBuffer = await generateLogbookPDF(logbooks);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Logbook_Kegiatan_${start_date || 'all'}_sd_${end_date || 'all'}.pdf"`);
+      return res.send(pdfBuffer);
+    }
+
     res.json({
       posko: posko[0] || {},
       dpl: dpl[0] || {},
