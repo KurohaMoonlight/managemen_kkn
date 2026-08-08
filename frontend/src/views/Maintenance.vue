@@ -24,6 +24,7 @@
             :key="cable.id"
             class="cable-plug"
             :class="{ 'cable-connected': cable.connected }"
+            :data-id="cable.id"
             @mousedown.prevent="startDrag(cable, $event)"
             @touchstart.prevent="startDrag(cable, $event)"
           >
@@ -39,32 +40,55 @@
             style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;"
           >
             <defs>
-              <filter id="wire-glow">
-                <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <filter id="wire-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4" result="blur"/>
                 <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
               </filter>
             </defs>
-            <!-- Kabel yang sudah tersambung -->
+            <!-- Kabel yang sudah tersambung: base wire -->
             <path
               v-for="w in connectedPaths"
-              :key="w.id"
+              :key="'base-' + w.id"
+              :d="w.d"
+              :stroke="w.color + '55'"
+              stroke-width="6"
+              fill="none"
+              stroke-linecap="round"
+            />
+            <!-- Neon glow layer -->
+            <path
+              v-for="w in connectedPaths"
+              :key="'glow-' + w.id"
               :d="w.d"
               :stroke="w.color"
-              stroke-width="5"
+              stroke-width="3"
               fill="none"
               stroke-linecap="round"
               filter="url(#wire-glow)"
+            />
+            <!-- Listrik mengalir (spark animasi) -->
+            <path
+              v-for="w in connectedPaths"
+              :key="'spark-' + w.id"
+              :d="w.d"
+              stroke="white"
+              stroke-width="2"
+              fill="none"
+              stroke-linecap="round"
+              stroke-dasharray="18 120"
+              :style="{ animation: `electric-flow-${w.id} 1.2s linear infinite` }"
+              opacity="0.85"
             />
             <!-- Kabel yang sedang di-drag -->
             <path
               v-if="dragPath"
               :d="dragPath"
               :stroke="dragging.color"
-              stroke-width="5"
+              stroke-width="4"
               fill="none"
               stroke-linecap="round"
-              stroke-dasharray="10 5"
-              opacity="0.75"
+              stroke-dasharray="10 6"
+              opacity="0.8"
             />
           </svg>
         </div>
@@ -81,17 +105,18 @@
           >
             <span class="socket-tag">{{ socket.label }}</span>
             <div
-              class="socket-hole"
-              :style="{
-                borderColor: socket.connectedColor || socket.color + '66',
-                boxShadow: socket.connectedColor ? `0 0 10px ${socket.connectedColor}66` : 'none'
-              }"
-            >
-              <div
-                class="socket-dot"
-                :style="{ background: socket.connectedColor || '#1e293b' }"
-              ></div>
-            </div>
+            class="socket-hole"
+            :class="{ 'socket-hole--connected': socket.connectedColor }"
+            :style="socket.connectedColor ? {
+              borderColor: socket.connectedColor,
+              boxShadow: `0 0 10px ${socket.connectedColor}80, 0 0 20px ${socket.connectedColor}40`
+            } : {}"
+          >
+            <div
+              class="socket-dot"
+              :style="socket.connectedColor ? { background: socket.connectedColor, boxShadow: `0 0 8px ${socket.connectedColor}` } : {}"
+            ></div>
+          </div>
           </div>
         </div>
       </div>
@@ -526,6 +551,11 @@ onUnmounted(() => clearTimeout(winTimer));
   min-width: 60px;
 }
 
+/* Animasi listrik mengalir */
+@keyframes electric-flow-red    { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -138; } }
+@keyframes electric-flow-blue   { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -138; } }
+@keyframes electric-flow-yellow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -138; } }
+
 /* ──── SOKET (KANAN) ──────────────────────────────────────────────────────── */
 .sockets-side {
   display: flex;
@@ -554,26 +584,34 @@ onUnmounted(() => clearTimeout(winTimer));
 }
 
 .socket-hole {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: #0d1117;
-  border: 3px solid;
+  background: #060a0f;
+  border: 3px solid #21262d;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.35s, box-shadow 0.35s;
+  transition: border-color 0.4s, box-shadow 0.4s;
+}
+
+.socket-hole--connected {
+  animation: socket-pulse 2s ease-in-out infinite;
+}
+
+@keyframes socket-pulse {
+  0%, 100% { box-shadow: var(--socket-glow, none); }
+  50% { box-shadow: var(--socket-glow, none), 0 0 30px rgba(255,255,255,0.08); }
 }
 
 .socket-dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  transition: background 0.35s, box-shadow 0.35s;
-}
-
-.socket-item.socket-connected .socket-dot {
-  box-shadow: 0 0 8px currentColor;
+  background: #1a1f27;
+  border: 1.5px solid #2d333b;
+  transition: background 0.4s, box-shadow 0.4s, border-color 0.4s;
 }
 
 /* ──── SHAKE (SOKET SALAH) ───────────────────────────────────────────────── */
