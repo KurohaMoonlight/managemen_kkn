@@ -66,21 +66,6 @@
               stroke-linecap="round"
               filter="url(#wire-glow)"
             />
-            <!-- Listrik mengalir (spark animasi) -->
-            <path
-              v-for="w in connectedPaths"
-              :key="'spark-' + w.id"
-              :d="w.d"
-              stroke="white"
-              stroke-width="3"
-              fill="none"
-              stroke-linecap="round"
-              pathLength="1000"
-              stroke-dasharray="60 940"
-              stroke-dashoffset="0"
-              style="animation: electric-flow 1.1s linear infinite;"
-              opacity="0.9"
-            />
             <!-- Kabel yang sedang di-drag -->
             <path
               v-if="dragPath"
@@ -553,11 +538,6 @@ onUnmounted(() => clearTimeout(winTimer));
   min-width: 60px;
 }
 
-/* Animasi listrik mengalir — satu keyframe untuk semua kabel */
-@keyframes electric-flow {
-  from { stroke-dashoffset: 1000; }
-  to   { stroke-dashoffset: 0; }
-}
 
 /* ──── SOKET (KANAN) ──────────────────────────────────────────────────────── */
 .sockets-side {
