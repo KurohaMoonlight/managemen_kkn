@@ -1285,6 +1285,34 @@ app.post('/api/absensi', authenticateToken, requireAdminOrAbove, async (req, res
   }
 });
 
+// PUT edit absensi
+app.put('/api/absensi/:id', authenticateToken, requireAdminOrAbove, async (req, res) => {
+  const { id } = req.params;
+  const { waktu, status, alasan } = req.body;
+  
+  if (!waktu || !status) return res.status(400).json({ message: 'Data tidak lengkap.' });
+  
+  try {
+    const alasanText = status === 'izin' || status === 'sakit' ? (alasan || null) : null;
+    await pool.query('UPDATE absensi SET waktu=?, status=?, alasan=? WHERE id=?', [waktu, status, alasanText, id]);
+    res.json({ success: true, message: 'Presensi berhasil diperbarui.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Gagal memperbarui absensi.' });
+  }
+});
+
+// DELETE absensi
+app.delete('/api/absensi/:id', authenticateToken, requireAdminOrAbove, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM absensi WHERE id=?', [id]);
+    res.json({ success: true, message: 'Presensi berhasil dihapus.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Gagal menghapus absensi.' });
+  }
+});
 // ─── MAHASISWA ABSENSI SELF-SERVICE ────────────────────────────────────────────
 function getDistanceFromLatLonInM(lat1, lon1, lat2, lon2) {
   const R = 6371000;

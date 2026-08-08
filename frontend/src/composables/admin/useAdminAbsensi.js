@@ -23,6 +23,16 @@ export function useAdminAbsensi() {
   const isSavingAbsen = ref(false);
   const absenError = ref('');
 
+  const contextMenu = ref({ show: false, x: 0, y: 0, absen: null });
+  
+  const showEditAbsenModal = ref(false);
+  const editAbsenForm = ref({ id: null, waktu: '', status: '', alasan: '' });
+  const isEditingAbsen = ref(false);
+  const editAbsenError = ref('');
+
+  const showDeleteAbsenModal = ref(false);
+  const isDeletingAbsen = ref(false);
+
   const showCetakModal = ref(false);
   const showCetakLogbookModal = ref(false);
 
@@ -295,6 +305,81 @@ export function useAdminAbsensi() {
     }
   };
 
+  const closeContextMenu = () => {
+    contextMenu.value.show = false;
+  };
+
+  const promptEditAbsen = () => {
+    const ab = contextMenu.value.absen;
+    editAbsenForm.value = {
+      id: ab.id,
+      waktu: ab.waktu.length > 5 ? ab.waktu.slice(0, 5) : ab.waktu,
+      status: ab.status,
+      alasan: ab.alasan || ''
+    };
+    editAbsenError.value = '';
+    showEditAbsenModal.value = true;
+    closeContextMenu();
+  };
+
+  const submitEditAbsen = async () => {
+    isEditingAbsen.value = true;
+    editAbsenError.value = '';
+    try {
+      const payload = {
+        waktu: editAbsenForm.value.waktu.length === 5 ? editAbsenForm.value.waktu + ':00' : editAbsenForm.value.waktu,
+        status: editAbsenForm.value.status,
+        alasan: editAbsenForm.value.alasan,
+      };
+      const res = await fetch(`/api/absensi/${editAbsenForm.value.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showEditAbsenModal.value = false;
+        toastSuccess('Presensi berhasil diperbarui!');
+        fetchAbsensi(selectedDate.value);
+      } else {
+        editAbsenError.value = data.message;
+      }
+    } catch {
+      editAbsenError.value = 'Gagal memperbarui presensi.';
+    } finally {
+      isEditingAbsen.value = false;
+    }
+  };
+
+  const promptDeleteAbsen = () => {
+    showDeleteAbsenModal.value = true;
+    closeContextMenu();
+  };
+
+  const confirmDeleteAbsen = async () => {
+    isDeletingAbsen.value = true;
+    try {
+      const res = await fetch(`/api/absensi/${contextMenu.value.absen.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (res.ok) {
+        showDeleteAbsenModal.value = false;
+        toastSuccess('Presensi berhasil dihapus!');
+        fetchAbsensi(selectedDate.value);
+      } else {
+        toastWarning('Gagal menghapus presensi.');
+      }
+    } catch {
+      toastWarning('Terjadi kesalahan jaringan.');
+    } finally {
+      isDeletingAbsen.value = false;
+    }
+  };
+
   const init = async () => {
     await fetchPeriodeKkn();
     generateCalendar();
@@ -333,5 +418,17 @@ export function useAdminAbsensi() {
     exportAbsensiExcel,
     submitAddAbsen,
     init,
+    contextMenu,
+    closeContextMenu,
+    showEditAbsenModal,
+    editAbsenForm,
+    isEditingAbsen,
+    editAbsenError,
+    promptEditAbsen,
+    submitEditAbsen,
+    showDeleteAbsenModal,
+    isDeletingAbsen,
+    promptDeleteAbsen,
+    confirmDeleteAbsen,
   };
 }

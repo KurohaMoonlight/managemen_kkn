@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import CetakAbsensiModal from '../CetakAbsensiModal.vue';
 import CetakLogbookModal from '../CetakLogbookModal.vue';
 import CetakLampiranModal from '../CetakLampiranModal.vue';
@@ -33,12 +33,41 @@ const {
   openAddAbsenModal,
   exportAbsensiExcel,
   submitAddAbsen,
+  submitAddAbsen,
   init,
+  contextMenu,
+  closeContextMenu,
+  showEditAbsenModal,
+  editAbsenForm,
+  isEditingAbsen,
+  editAbsenError,
+  promptEditAbsen,
+  submitEditAbsen,
+  showDeleteAbsenModal,
+  isDeletingAbsen,
+  promptDeleteAbsen,
+  confirmDeleteAbsen,
 } = useAdminAbsensi();
 
 const showCetakLampiranModal = ref(false);
 
-onMounted(init);
+const openContextMenu = (e, absen) => {
+  contextMenu.value = {
+    show: true,
+    x: e.clientX,
+    y: e.clientY,
+    absen
+  };
+};
+
+onMounted(() => {
+  init();
+  document.addEventListener('click', closeContextMenu);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeContextMenu);
+});
 </script>
 
 <template>
@@ -142,7 +171,7 @@ onMounted(init);
             </tr>
           </tbody>
           <tbody v-else>
-            <tr v-for="absen in absensiData" :key="absen.id">
+            <tr v-for="absen in absensiData" :key="absen.id" @contextmenu.prevent="openContextMenu($event, absen)" style="cursor: context-menu;" title="Klik kanan untuk Edit/Hapus">
               <td class="font-bold text-primary">{{ absen.waktu }}</td>
               <td class="font-mono">{{ absen.nim }}</td>
               <td>{{ absen.nama_lengkap }}</td>
@@ -266,6 +295,61 @@ onMounted(init);
     :token="adminToken"
     @close="showCetakLogbookModal = false"
   />
+
+  <!-- CONTEXT MENU -->
+  <div v-if="contextMenu.show" 
+       :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+       class="context-menu" 
+       @click.stop>
+    <div class="context-menu-item" @click="promptEditAbsen">✏️ Edit Presensi</div>
+    <div class="context-menu-item delete" @click="promptDeleteAbsen">🗑️ Hapus Presensi</div>
+  </div>
+
+  <!-- Edit Absen Modal -->
+  <div class="modal-overlay" v-if="showEditAbsenModal" @click.self="showEditAbsenModal = false">
+    <div class="modal-content animate-slide-up">
+      <h2 style="margin-top:0;">Edit Presensi</h2>
+      <form @submit.prevent="submitEditAbsen">
+        <div class="form-group">
+          <label>Waktu (Jam:Menit)</label>
+          <input type="time" v-model="editAbsenForm.waktu" required />
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select v-model="editAbsenForm.status" required>
+            <option value="hadir">Hadir</option>
+            <option value="izin">Izin</option>
+            <option value="sakit">Sakit</option>
+          </select>
+        </div>
+        <div class="form-group" v-if="editAbsenForm.status === 'izin' || editAbsenForm.status === 'sakit'">
+          <label>Alasan / Keterangan</label>
+          <input type="text" v-model="editAbsenForm.alasan" placeholder="Masukkan alasan (opsional)" />
+        </div>
+        <div v-if="editAbsenError" class="error-msg">{{ editAbsenError }}</div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" @click="showEditAbsenModal = false">Batal</button>
+          <button type="submit" class="btn btn-primary" :disabled="isEditingAbsen">
+            {{ isEditingAbsen ? 'Menyimpan...' : 'Simpan Perubahan' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Absen Modal -->
+  <div class="modal-overlay" v-if="showDeleteAbsenModal" @click.self="showDeleteAbsenModal = false">
+    <div class="modal-content animate-slide-up" style="max-width: 400px; text-align: center;">
+      <h3 style="color: #ef4444; margin-top: 0;">⚠️ Hapus Presensi?</h3>
+      <p style="color: #64748b; margin-bottom: 1.5rem;">Data presensi ini akan dihapus secara permanen.</p>
+      <div class="modal-actions" style="justify-content: center;">
+        <button type="button" class="btn btn-outline" @click="showDeleteAbsenModal = false">Batal</button>
+        <button type="button" class="btn btn-primary" style="background-color: #ef4444; border-color: #ef4444;" @click="confirmDeleteAbsen" :disabled="isDeletingAbsen">
+          {{ isDeletingAbsen ? 'Menghapus...' : 'Ya, Hapus' }}
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -411,5 +495,35 @@ onMounted(init);
   .bottom-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.context-menu {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0;
+  z-index: 10000;
+  min-width: 150px;
+}
+.context-menu-item {
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #334155;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.context-menu-item:hover {
+  background: #f1f5f9;
+}
+.context-menu-item.delete {
+  color: #ef4444;
+}
+.context-menu-item.delete:hover {
+  background: #fef2f2;
 }
 </style>
