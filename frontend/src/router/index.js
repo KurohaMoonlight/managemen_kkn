@@ -82,7 +82,7 @@ router.beforeEach(async (to, from, next) => {
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   
   const isSuperadmin = user && user.role === 'superadmin';
-  const hasBypassed = localStorage.getItem('maintenance_bypassed') === 'true';
+  const hasBypassed = sessionStorage.getItem('maintenance_bypassed') === 'true';
   const canBypass = isSuperadmin || hasBypassed;
 
   // 1. Cek Maintenance Mode
@@ -91,12 +91,18 @@ router.beforeEach(async (to, from, next) => {
     const data = await res.json();
     if (data.is_maintenance) {
       if (canBypass) {
-        if (to.path === '/maintenance') return next('/');
+        // Bypass aktif: jika user masih di /maintenance, kirim ke dashboard-nya
+        if (to.path === '/maintenance') {
+          const dest = roleToPath[user?.role] || '/login';
+          return next(dest);
+        }
+        // else: biarkan lanjut ke tujuan asal
       } else {
         if (to.path !== '/maintenance') return next('/maintenance');
       }
     } else {
-      if (hasBypassed) localStorage.removeItem('maintenance_bypassed');
+      // Maintenance selesai — hapus flag bypass jika masih ada
+      if (hasBypassed) sessionStorage.removeItem('maintenance_bypassed');
       if (to.path === '/maintenance') return next('/');
     }
   } catch (error) {

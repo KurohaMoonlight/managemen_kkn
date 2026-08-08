@@ -21,7 +21,7 @@ export function useMaintenanceWatcher() {
 
       const user = JSON.parse(localStorage.getItem('user') || 'null');
       const isSuperadmin = user?.role === 'superadmin';
-      const hasBypassed = localStorage.getItem('maintenance_bypassed') === 'true';
+      const hasBypassed = sessionStorage.getItem('maintenance_bypassed') === 'true';
 
       if (isSuperadmin || hasBypassed) return; // Boleh tetap
 
@@ -64,7 +64,7 @@ export function useMaintenanceWatcher() {
 export async function logoutWithMaintenanceCheck(router) {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  localStorage.removeItem('maintenance_bypassed');
+  sessionStorage.removeItem('maintenance_bypassed');
 
   try {
     const res = await fetch('/api/maintenance');

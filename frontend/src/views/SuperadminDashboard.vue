@@ -120,7 +120,7 @@ const closePasswordModal = () => {
 const logout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  localStorage.removeItem('maintenance_bypassed');
+  sessionStorage.removeItem('maintenance_bypassed');
   router.push('/login');
 };
 

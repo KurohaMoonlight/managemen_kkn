@@ -364,7 +364,7 @@ const doLogin = async () => {
     if (res.ok) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('maintenance_bypassed', 'true');
+      sessionStorage.setItem('maintenance_bypassed', 'true');
       const map = { superadmin: '/superadmin', admin: '/admin', mahasiswa: '/mahasiswa' };
       window.location.href = map[data.user.role] || '/';
     } else {
