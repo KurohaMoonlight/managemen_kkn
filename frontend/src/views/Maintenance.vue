@@ -1,30 +1,38 @@
 <template>
-  <div class="maintenance-container">
-    <!-- Star Indicator -->
-    <div v-if="typedChars > 0" class="secret-indicator">
-      {{ '*'.repeat(typedChars) }}
+  <div class="maintenance-container" @mousemove="onDrag" @mouseup="endDrag" @touchmove="onDrag" @touchend="endDrag">
+    <!-- Star Indicator (tidak perlu lagi karena pakai klik/drag, tapi kita bisa pakai hitCount) -->
+    <div v-if="hitCount > 0" class="secret-indicator">
+      {{ '*'.repeat(hitCount) }}
     </div>
     <div class="animation-wrapper">
-      <div class="wall">
+      <div class="wall" ref="wallRef" :class="{ 'shake-manual': manualShake, 'shake-auto': isAutoAnim }">
         <div class="brick-row" v-for="r in 4" :key="'r-'+r">
-          <!-- Buat bata di baris pertama dan kedua sedikit hancur -->
+          <!-- Bata akan semakin banyak yang hancur seiring hitCount bertambah -->
           <div class="brick" 
                v-for="b in 3" 
                :key="'b-'+b" 
-               :class="{'broken': (r === 1 && b === 3) || (r === 2 && b === 2)}">
+               :class="{'broken': isBrickBroken(r, b)}">
           </div>
         </div>
       </div>
       
       <!-- Efek puing-puing (debris) yang terbang saat dipalu -->
-      <div class="debris debris-1"></div>
-      <div class="debris debris-2"></div>
-      <div class="debris debris-3"></div>
+      <div class="debris debris-1" :class="{'fly': isAutoAnim || manualShake}"></div>
+      <div class="debris debris-2" :class="{'fly': isAutoAnim || manualShake}"></div>
+      <div class="debris debris-3" :class="{'fly': isAutoAnim || manualShake}"></div>
 
-      <div class="hammer-container">
-        <div class="hammer">
-          <div class="hammer-head"></div>
-          <div class="hammer-handle"></div>
+      <!-- Wrapper baru untuk drag & drop -->
+      <div class="hammer-wrapper" 
+           ref="hammerRef"
+           :style="{ transform: `translate(${hammerX}px, ${hammerY}px)`, cursor: isDragging ? 'grabbing' : 'grab' }"
+           @mousedown.prevent="startDrag"
+           @touchstart.prevent="startDrag">
+        
+        <div class="hammer-container" :class="{ 'auto-hit': isAutoAnim, 'manual-hit': manualHitAnim }">
+          <div class="hammer">
+            <div class="hammer-head"></div>
+            <div class="hammer-handle"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -55,37 +63,102 @@ import { ref, onMounted, onUnmounted } from 'vue';
 
 const message = ref('Sistem sedang dalam perbaikan rutin. Silakan kembali lagi nanti.');
 
-// Secret Trigger Logic
-const secretCode = 'kkndebug';
-let currentInput = ''; // hapus currentInput yang lama, tidak dipakai lagi
-const typedChars = ref(0);
+// --- Secret Trigger Logic (Drag & Drop) ---
 const showSecretLogin = ref(false);
+const hitCount = ref(0);
+const maxHits = 3;
 
-const handleKeydown = (e) => {
+const wallRef = ref(null);
+const hammerRef = ref(null);
+
+const isAutoAnim = ref(true);
+const isDragging = ref(false);
+const hammerX = ref(0);
+const hammerY = ref(0);
+const startX = ref(0);
+const startY = ref(0);
+
+const manualShake = ref(false);
+const manualHitAnim = ref(false);
+
+const isBrickBroken = (r, b) => {
+  // Bata hancur bertahap berdasarkan hitCount
+  if (hitCount.value === 0) return (r === 1 && b === 3) || (r === 2 && b === 2);
+  if (hitCount.value === 1) return (r === 1 && b === 3) || (r === 2 && b === 2) || (r === 1 && b === 2);
+  if (hitCount.value === 2) return (r === 1 && b === 3) || (r === 2 && b === 2) || (r === 1 && b === 2) || (r === 2 && b === 1) || (r === 3 && b === 3);
+  return true; // Hancur semua jika hitCount >= 3
+};
+
+const startDrag = (e) => {
   if (showSecretLogin.value) return;
-
-  const key = e.key.toLowerCase();
+  isDragging.value = true;
+  isAutoAnim.value = false; // Matikan animasi pukul otomatis saat ditarik
   
-  if (/^[a-z]$/.test(key)) {
-    if (key === secretCode[typedChars.value]) {
-       typedChars.value++;
-       if (typedChars.value === secretCode.length) {
-           showSecretLogin.value = true;
-           typedChars.value = 0;
-       }
-    } else {
-       // Reset langsung jika salah ketik. 
-       // Namun jika huruf yang salah ketik itu ternyata adalah huruf pertama dari kode (k),
-       // kita mulai ulang hitungannya dari 1.
-       typedChars.value = (key === secretCode[0]) ? 1 : 0;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  
+  startX.value = clientX - hammerX.value;
+  startY.value = clientY - hammerY.value;
+};
+
+const onDrag = (e) => {
+  if (!isDragging.value) return;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  
+  hammerX.value = clientX - startX.value;
+  hammerY.value = clientY - startY.value;
+};
+
+const endDrag = (e) => {
+  if (!isDragging.value) return;
+  isDragging.value = false;
+  
+  // Cek collision antara hammer dan wall
+  if (wallRef.value && hammerRef.value) {
+    const wallRect = wallRef.value.getBoundingClientRect();
+    const hammerRect = hammerRef.value.getBoundingClientRect();
+    
+    // Simple AABB collision detection
+    const isColliding = !(
+      hammerRect.right < wallRect.left || 
+      hammerRect.left > wallRect.right || 
+      hammerRect.bottom < wallRect.top || 
+      hammerRect.top > wallRect.bottom
+    );
+    
+    if (isColliding) {
+      // Hit success!
+      hitCount.value++;
+      
+      // Animasi pukul manual dan tembok bergetar
+      manualHitAnim.value = true;
+      manualShake.value = true;
+      
+      setTimeout(() => {
+        manualHitAnim.value = false;
+        manualShake.value = false;
+        if (hitCount.value >= maxHits) {
+          showSecretLogin.value = true;
+          hitCount.value = 0; // reset
+        }
+      }, 500);
     }
-  } else {
-    typedChars.value = 0;
   }
+  
+  // Kembalikan palu ke posisi semula perlahan dengan CSS (transition)
+  hammerX.value = 0;
+  hammerY.value = 0;
+  
+  // Nyalakan lagi animasi otomatis setelah kembali (kasih jeda)
+  setTimeout(() => {
+    if (!isDragging.value && !showSecretLogin.value) {
+      isAutoAnim.value = true;
+    }
+  }, 500);
 };
 
 onMounted(async () => {
-  window.addEventListener('keydown', handleKeydown);
   try {
     const res = await fetch('/api/maintenance');
     const data = await res.json();
@@ -95,10 +168,6 @@ onMounted(async () => {
   } catch (err) {
     console.error(err);
   }
-});
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown);
 });
 
 // Secret Login Logic
@@ -289,7 +358,14 @@ const handleSecretLogin = async () => {
   overflow: hidden;
   position: relative;
   z-index: 1;
+}
+
+/* Animasi otomatis tembok bergetar jika isAutoAnim aktif */
+.wall.shake-auto {
   animation: wall-shake 2s infinite linear;
+}
+.wall.shake-manual {
+  animation: wall-shake 0.5s 1 linear; /* Getaran cepat saat dipukul manual */
 }
 
 .brick-row {
@@ -336,20 +412,35 @@ const handleSecretLogin = async () => {
   opacity: 0;
 }
 
-.debris-1 { right: 80px; top: 100px; animation: fly-1 2s infinite linear; }
-.debris-2 { right: 70px; top: 110px; animation: fly-2 2s infinite linear; }
-.debris-3 { right: 90px; top: 120px; animation: fly-3 2s infinite linear; }
+.debris-1.fly { right: 80px; top: 100px; animation: fly-1 2s infinite linear; }
+.debris-2.fly { right: 70px; top: 110px; animation: fly-2 2s infinite linear; }
+.debris-3.fly { right: 90px; top: 120px; animation: fly-3 2s infinite linear; }
 
-/* Hammer Styles */
-.hammer-container {
+/* Hammer Wrapper untuk Drag */
+.hammer-wrapper {
   position: absolute;
   right: 10px;
   bottom: 0px;
   width: 100px;
   height: 150px;
+  z-index: 5;
+  transition: transform 0.2s ease-out; /* Animasi kembali saat dilepas */
+  touch-action: none; /* Mencegah scrolling halaman saat drag di mobile */
+}
+
+/* Hammer Styles */
+.hammer-container {
+  width: 100%;
+  height: 100%;
   transform-origin: bottom right;
-  z-index: 4;
+}
+
+.hammer-container.auto-hit {
   animation: hit 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hammer-container.manual-hit {
+  animation: hit-manual 0.4s 1 cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .hammer {
@@ -402,6 +493,14 @@ const handleSecretLogin = async () => {
   55% { transform: rotate(-10deg); } /* Bounce */
   60% { transform: rotate(-25deg); } /* Settle */
   70% { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes hit-manual {
+  0% { transform: rotate(60deg); }
+  30% { transform: rotate(-30deg); } /* Impact! */
+  50% { transform: rotate(-10deg); } /* Bounce */
+  70% { transform: rotate(-25deg); } /* Settle */
   100% { transform: rotate(0deg); }
 }
 
