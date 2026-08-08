@@ -72,12 +72,14 @@
               :key="'spark-' + w.id"
               :d="w.d"
               stroke="white"
-              stroke-width="2"
+              stroke-width="3"
               fill="none"
               stroke-linecap="round"
-              stroke-dasharray="18 120"
-              :style="{ animation: `electric-flow-${w.id} 1.2s linear infinite` }"
-              opacity="0.85"
+              pathLength="1000"
+              stroke-dasharray="60 940"
+              stroke-dashoffset="0"
+              style="animation: electric-flow 1.1s linear infinite;"
+              opacity="0.9"
             />
             <!-- Kabel yang sedang di-drag -->
             <path
@@ -551,10 +553,11 @@ onUnmounted(() => clearTimeout(winTimer));
   min-width: 60px;
 }
 
-/* Animasi listrik mengalir */
-@keyframes electric-flow-red    { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -138; } }
-@keyframes electric-flow-blue   { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -138; } }
-@keyframes electric-flow-yellow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -138; } }
+/* Animasi listrik mengalir — satu keyframe untuk semua kabel */
+@keyframes electric-flow {
+  from { stroke-dashoffset: 1000; }
+  to   { stroke-dashoffset: 0; }
+}
 
 /* ──── SOKET (KANAN) ──────────────────────────────────────────────────────── */
 .sockets-side {
