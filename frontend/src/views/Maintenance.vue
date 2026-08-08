@@ -1,115 +1,130 @@
 <template>
-  <div class="maintenance-page" @mousemove="onMove" @mouseup="onRelease" @touchmove.prevent="onMove" @touchend="onRelease" @touchcancel="onRelease">
-
-    <!-- Panel Listrik Utama -->
-    <div class="fuse-panel">
+  <div
+    class="maintenance-page"
+    @mousemove="onMove"
+    @mouseup="onRelease"
+    @touchmove.prevent="onMove"
+    @touchend="onRelease"
+    @touchcancel="onRelease"
+  >
+    <!-- Panel listrik -->
+    <div class="fuse-panel" ref="panelRef">
       <div class="panel-header">
-        <div class="panel-label">⚡ ELECTRICAL PANEL</div>
-        <div class="status-light" :class="{ active: allConnected }"></div>
+        <span class="panel-label">⚡ ELECTRICAL PANEL</span>
+        <span class="status-light" :class="{ on: allConnected }"></span>
       </div>
 
       <div class="panel-body">
-        <!-- Soket (kanan panel) -->
-        <div class="sockets-col">
-          <div class="socket-group-label">OUTPUT</div>
-          <div
-            v-for="socket in sockets"
-            :key="socket.id"
-            class="socket"
-            :class="{ connected: socket.connected, [`socket-${socket.color}`]: true }"
-            :ref="el => { if (el) socketRefs[socket.id] = el }"
-          >
-            <div class="socket-hole">
-              <div class="socket-inner" :class="{ glow: socket.connected }"></div>
-            </div>
-            <div class="socket-label">{{ socket.label }}</div>
-          </div>
-        </div>
 
-        <!-- Tengah panel: kabel yang sudah tersambung -->
-        <div class="wires-area">
-          <svg class="wires-svg" ref="wiresSvgRef" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;">
-            <!-- Kabel yang sudah terhubung -->
-            <path
-              v-for="wire in connectedWires"
-              :key="'connected-' + wire.id"
-              :d="wire.path"
-              :stroke="wire.color"
-              stroke-width="5"
-              fill="none"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              filter="url(#glow)"
-            />
-            <!-- Kabel yang sedang didrag -->
-            <path
-              v-if="dragging"
-              :d="draggingPath"
-              :stroke="dragging.color"
-              stroke-width="5"
-              fill="none"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-dasharray="8 4"
-              opacity="0.8"
-            />
-            <defs>
-              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-            </defs>
-          </svg>
-        </div>
-
-        <!-- Kabel sumber (kiri panel) -->
-        <div class="cables-col">
-          <div class="cable-group-label">INPUT</div>
+        <!-- KIRI: Kabel sumber (yang bisa di-drag) -->
+        <div class="cables-side">
+          <div class="side-label">INPUT</div>
           <div
             v-for="cable in cables"
             :key="cable.id"
             class="cable-plug"
-            :class="{ connected: cable.connected, [`cable-${cable.color}`]: true, dragging: dragging?.id === cable.id }"
-            :ref="el => { if (el) cableRefs[cable.id] = el }"
+            :class="{ 'cable-connected': cable.connected }"
             @mousedown.prevent="startDrag(cable, $event)"
             @touchstart.prevent="startDrag(cable, $event)"
           >
-            <div class="cable-end"></div>
-            <div class="cable-label">{{ cable.colorLabel }}</div>
+            <div class="cable-body" :style="{ background: cable.color }"></div>
+            <span class="cable-tag">{{ cable.label }}</span>
+          </div>
+        </div>
+
+        <!-- TENGAH: area kabel tergambar (SVG) -->
+        <div class="wires-middle" ref="wiresAreaRef">
+          <svg
+            ref="svgRef"
+            style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;"
+          >
+            <defs>
+              <filter id="wire-glow">
+                <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <!-- Kabel yang sudah tersambung -->
+            <path
+              v-for="w in connectedPaths"
+              :key="w.id"
+              :d="w.d"
+              :stroke="w.color"
+              stroke-width="5"
+              fill="none"
+              stroke-linecap="round"
+              filter="url(#wire-glow)"
+            />
+            <!-- Kabel yang sedang di-drag -->
+            <path
+              v-if="dragPath"
+              :d="dragPath"
+              :stroke="dragging.color"
+              stroke-width="5"
+              fill="none"
+              stroke-linecap="round"
+              stroke-dasharray="10 5"
+              opacity="0.75"
+            />
+          </svg>
+        </div>
+
+        <!-- KANAN: Soket tujuan -->
+        <div class="sockets-side">
+          <div class="side-label">OUTPUT</div>
+          <div
+            v-for="socket in sockets"
+            :key="socket.id"
+            class="socket-item"
+            :class="{ 'socket-connected': socket.connectedColor }"
+            :ref="el => { if (el) socketEls[socket.id] = el }"
+          >
+            <span class="socket-tag">{{ socket.label }}</span>
+            <div
+              class="socket-hole"
+              :style="{
+                borderColor: socket.connectedColor || socket.color + '66',
+                boxShadow: socket.connectedColor ? `0 0 10px ${socket.connectedColor}66` : 'none'
+              }"
+            >
+              <div
+                class="socket-dot"
+                :style="{ background: socket.connectedColor || '#1e293b' }"
+              ></div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Indikator status panel -->
       <div class="panel-footer">
-        <div class="breaker" v-for="i in 4" :key="i" :class="{ tripped: !allConnected && i <= 2 }"></div>
+        <div v-for="i in 4" :key="i" class="breaker" :class="{ tripped: !allConnected && i <= 2 }"></div>
       </div>
     </div>
 
-    <!-- Konten maintenance -->
+    <!-- Teks maintenance -->
     <div class="maintenance-content">
-      <div class="maintenance-icon">🔧</div>
-      <h1 class="maintenance-title">Sistem Sedang Dalam Perbaikan</h1>
-      <p class="maintenance-message">{{ message }}</p>
-      <div class="maintenance-dots">
-        <span></span><span></span><span></span>
-      </div>
+      <div class="maint-icon">🔧</div>
+      <h1>Sistem Sedang Dalam Perbaikan</h1>
+      <p>{{ message }}</p>
+      <div class="dots"><span/><span/><span/></div>
     </div>
 
-    <!-- Modal Login Rahasia -->
+    <!-- Modal login rahasia -->
     <Transition name="modal-pop">
-      <div v-if="showSecretLogin" class="secret-modal-overlay" @click.self="closeModal">
-        <div class="secret-modal">
-          <div class="modal-icon">⚡</div>
+      <div v-if="showLogin" class="modal-overlay" @click.self="closeModal">
+        <div class="modal-box">
+          <div style="font-size:2.5rem;margin-bottom:0.5rem;">⚡</div>
           <h2>Sistem Terhubung</h2>
           <p class="modal-sub">Panel aktif. Masukkan kredensial untuk override maintenance.</p>
-          <form @submit.prevent="handleLogin">
-            <input type="text" v-model="username" placeholder="Username" autocomplete="username" required />
-            <input type="password" v-model="password" placeholder="Password" autocomplete="current-password" required />
-            <button type="submit" :disabled="isLoading">{{ isLoading ? 'Mengautentikasi...' : 'Override & Masuk' }}</button>
+          <form @submit.prevent="doLogin">
+            <input v-model="loginUser" type="text" placeholder="Username" autocomplete="username" required />
+            <input v-model="loginPass" type="password" placeholder="Password" autocomplete="current-password" required />
+            <button type="submit" :disabled="loginLoading">
+              {{ loginLoading ? 'Mengautentikasi...' : 'Override & Masuk' }}
+            </button>
           </form>
-          <p v-if="loginError" class="error-msg">⚠ {{ loginError }}</p>
-          <button class="close-btn" @click="closeModal">Batalkan</button>
+          <p v-if="loginErr" class="err">⚠ {{ loginErr }}</p>
+          <button class="cancel-btn" @click="closeModal">Batalkan</button>
         </div>
       </div>
     </Transition>
@@ -117,116 +132,118 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 
-// ─── PESAN MAINTENANCE ────────────────────────────────────────────────────────
+// ─── MESSAGE ──────────────────────────────────────────────────────────────────
 const message = ref('Kami sedang melakukan perbaikan sistem. Silakan kembali lagi dalam beberapa saat.');
 
-// ─── DEFINISI KABEL & SOKET ───────────────────────────────────────────────────
-// Kabel di kiri, soket di kanan. Harus disambungkan berdasarkan warna.
-const cables = reactive([
-  { id: 'c1', color: '#ef4444', colorLabel: 'L1', connected: false },
-  { id: 'c2', color: '#3b82f6', colorLabel: 'L2', connected: false },
-  { id: 'c3', color: '#f59e0b', colorLabel: 'N',  connected: false },
-]);
+// ─── KABEL & SOKET ────────────────────────────────────────────────────────────
+// Kabel kiri (INPUT), soket kanan (OUTPUT). Harus cocokkan warna.
+const WIRES = [
+  { id: 'red',    color: '#ef4444', label: 'L1' },
+  { id: 'blue',   color: '#3b82f6', label: 'L2' },
+  { id: 'yellow', color: '#eab308', label: 'N'  },
+];
 
-const sockets = reactive([
-  { id: 's1', color: '#ef4444', label: 'R', connected: false, cableId: null },
-  { id: 's2', color: '#3b82f6', label: 'B', connected: false, cableId: null },
-  { id: 's3', color: '#f59e0b', label: 'Y', connected: false, cableId: null },
-]);
+// Soket dikocok agar tidak linear (R, B, Y tidak urut dengan L1, L2, N)
+const SOCKET_ORDER = ['yellow', 'red', 'blue'];
 
-// Mapping kabel -> soket yang benar
-const correctMap = { c1: 's1', c2: 's2', c3: 's3' };
+const cables = reactive(WIRES.map(w => ({ ...w, connected: false })));
+const sockets = reactive(SOCKET_ORDER.map((id, i) => {
+  const wire = WIRES.find(w => w.id === id);
+  return { id, color: wire.color, label: ['Y', 'R', 'B'][i], connectedColor: null };
+}));
 
 // ─── REFS ─────────────────────────────────────────────────────────────────────
-const cableRefs = reactive({});
-const socketRefs = reactive({});
-const wiresSvgRef = ref(null);
+const svgRef = ref(null);
+const wiresAreaRef = ref(null);
+const socketEls = reactive({});
 
 // ─── DRAG STATE ───────────────────────────────────────────────────────────────
-const dragging = ref(null);
-const pointerX = ref(0);
-const pointerY = ref(0);
+const dragging = ref(null);   // { id, color, label }
+const curX = ref(0);
+const curY = ref(0);
 
-// ─── CONNECTED WIRES (untuk render SVG path) ─────────────────────────────────
-const connectedWires = reactive([]);
+// ─── CONNECTED PATHS (SVG) ────────────────────────────────────────────────────
+const connectedPaths = reactive([]); // { id, color, d }
 
-// ─── PATH KABEL SAAT DRAG ─────────────────────────────────────────────────────
-const draggingPath = computed(() => {
-  if (!dragging.value || !wiresSvgRef.value) return '';
-  const svgRect = wiresSvgRef.value.getBoundingClientRect();
-  const cableEl = cableRefs[dragging.value.id];
-  if (!cableEl) return '';
-  const cableRect = cableEl.getBoundingClientRect();
-
-  // Titik awal = ujung kanan kabel (sisi panel)
-  const x1 = cableRect.right - svgRect.left;
-  const y1 = cableRect.top + cableRect.height / 2 - svgRect.top;
-
-  // Titik akhir = pointer
-  const x2 = pointerX.value - svgRect.left;
-  const y2 = pointerY.value - svgRect.top;
-
-  // Bezier curve agar terlihat seperti kabel yang lemas
-  const cx1 = x1 + (x2 - x1) * 0.4;
-  const cy1 = y1 + 30; // turun sedikit (efek berat kabel)
-  const cx2 = x1 + (x2 - x1) * 0.6;
-  const cy2 = y2 + 30;
-
+// Hitung path SVG dari titik awal (ujung kabel) ke soket
+const makePath = (x1, y1, x2, y2) => {
+  const sag = Math.max(30, Math.abs(y2 - y1) * 0.4);
+  const cx1 = x1 + (x2 - x1) * 0.35;
+  const cy1 = y1 + sag;
+  const cx2 = x1 + (x2 - x1) * 0.65;
+  const cy2 = y2 + sag;
   return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+};
+
+// Path kabel saat sedang di-drag
+const dragPath = computed(() => {
+  if (!dragging.value || !svgRef.value) return null;
+  const svg = svgRef.value;
+  const svgRect = svg.getBoundingClientRect();
+  // Titik awal: cari elemen kabel
+  const cableEls = document.querySelectorAll('.cable-plug');
+  let startX = 0, startY = 0;
+  for (const el of cableEls) {
+    const body = el.querySelector('.cable-body');
+    if (!body) continue;
+    // Cocokkan warna via data-id
+    if (el.dataset.id === dragging.value.id) {
+      const r = body.getBoundingClientRect();
+      startX = r.right - svgRect.left;
+      startY = r.top + r.height / 2 - svgRect.top;
+      break;
+    }
+  }
+  const ex = curX.value - svgRect.left;
+  const ey = curY.value - svgRect.top;
+  return makePath(startX, startY, ex, ey);
 });
 
-// ─── DRAG HANDLERS ────────────────────────────────────────────────────────────
+// ─── START DRAG ───────────────────────────────────────────────────────────────
 const startDrag = (cable, e) => {
+  // Jika sudah tersambung, cabut dulu
   if (cable.connected) {
-    // Lepaskan kabel yang sudah tersambung
-    disconnectCable(cable.id);
+    disconnect(cable.id);
   }
-  dragging.value = { ...cable };
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  pointerX.value = clientX;
-  pointerY.value = clientY;
+  dragging.value = { id: cable.id, color: cable.color, label: cable.label };
+  const touch = e.touches ? e.touches[0] : e;
+  curX.value = touch.clientX;
+  curY.value = touch.clientY;
 };
 
 const onMove = (e) => {
   if (!dragging.value) return;
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  pointerX.value = clientX;
-  pointerY.value = clientY;
+  const touch = e.touches ? e.touches[0] : e;
+  curX.value = touch.clientX;
+  curY.value = touch.clientY;
 };
 
 const onRelease = (e) => {
   if (!dragging.value) return;
 
-  // Cek apakah dilepas di atas soket yang tepat
-  const clientX = e.changedTouches ? e.changedTouches[0].clientX : pointerX.value;
-  const clientY = e.changedTouches ? e.changedTouches[0].clientY : pointerY.value;
+  const touch = e.changedTouches ? e.changedTouches[0] : e;
+  const rx = touch.clientX;
+  const ry = touch.clientY;
 
-  let connected = false;
+  let matched = false;
   for (const socket of sockets) {
-    if (socket.connected) continue; // soket sudah terpakai
-    const socketEl = socketRefs[socket.id];
-    if (!socketEl) continue;
-    const rect = socketEl.getBoundingClientRect();
-    const margin = 20;
-    if (
-      clientX >= rect.left - margin &&
-      clientX <= rect.right + margin &&
-      clientY >= rect.top - margin &&
-      clientY <= rect.bottom + margin
-    ) {
-      // Cocokkan warna
-      if (correctMap[dragging.value.id] === socket.id) {
-        connectCable(dragging.value.id, socket.id);
-        connected = true;
+    if (socket.connectedColor) continue; // soket sudah terpakai
+    const el = socketEls[socket.id];
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    const pad = 24;
+    if (rx >= rect.left - pad && rx <= rect.right + pad && ry >= rect.top - pad && ry <= rect.bottom + pad) {
+      // Cek cocok warna
+      if (socket.id === dragging.value.id) {
+        connect(dragging.value.id, socket.id);
       } else {
-        // Warna salah — efek shake
-        socketEl.classList.add('wrong-socket');
-        setTimeout(() => socketEl.classList.remove('wrong-socket'), 500);
+        // Salah warna — shake soket
+        el.classList.add('shake');
+        setTimeout(() => el.classList.remove('shake'), 450);
       }
+      matched = true;
       break;
     }
   }
@@ -235,111 +252,116 @@ const onRelease = (e) => {
 };
 
 // ─── CONNECT / DISCONNECT ─────────────────────────────────────────────────────
-const connectCable = (cableId, socketId) => {
+const connect = async (cableId, socketId) => {
   const cable = cables.find(c => c.id === cableId);
   const socket = sockets.find(s => s.id === socketId);
   if (!cable || !socket) return;
 
   cable.connected = true;
-  socket.connected = true;
-  socket.cableId = cableId;
+  socket.connectedColor = cable.color;
 
-  // Tambahkan path kabel yang sudah terhubung ke SVG
-  nextTick(() => {
-    const svgEl = wiresSvgRef.value;
-    const cableEl = cableRefs[cableId];
-    const socketEl = socketRefs[socketId];
-    if (!svgEl || !cableEl || !socketEl) return;
+  await nextTick();
 
-    const svgRect = svgEl.getBoundingClientRect();
-    const cableRect = cableEl.getBoundingClientRect();
-    const socketRect = socketEl.getBoundingClientRect();
+  // Hitung posisi SVG path
+  const svg = svgRef.value;
+  if (!svg) return;
+  const svgRect = svg.getBoundingClientRect();
 
-    const x1 = cableRect.right - svgRect.left;
-    const y1 = cableRect.top + cableRect.height / 2 - svgRect.top;
-    const x2 = socketRect.left - svgRect.left;
-    const y2 = socketRect.top + socketRect.height / 2 - svgRect.top;
-
-    const cy = Math.max(y1, y2) + 25;
-    const path = `M ${x1} ${y1} C ${x1 + 60} ${cy}, ${x2 - 60} ${cy}, ${x2} ${y2}`;
-
-    connectedWires.push({ id: cableId, color: cable.color, path });
-  });
-};
-
-const disconnectCable = (cableId) => {
-  const cable = cables.find(c => c.id === cableId);
-  const socket = sockets.find(s => s.cableId === cableId);
-  if (cable) cable.connected = false;
-  if (socket) { socket.connected = false; socket.cableId = null; }
-  const idx = connectedWires.findIndex(w => w.id === cableId);
-  if (idx !== -1) connectedWires.splice(idx, 1);
-};
-
-// ─── CEK APAKAH SEMUA TERSAMBUNG ─────────────────────────────────────────────
-const allConnected = computed(() => cables.every(c => c.connected));
-
-let panelSolvedTimer = null;
-const showSecretLogin = ref(false);
-
-// Watch allConnected — muncul modal setelah semua kabel tersambung
-const checkWin = () => {
-  if (allConnected.value) {
-    clearTimeout(panelSolvedTimer);
-    panelSolvedTimer = setTimeout(() => {
-      showSecretLogin.value = true;
-    }, 800); // jeda singkat supaya user lihat efek "panel nyala"
+  // Titik awal: ujung kanan .cable-body dari kabel ini
+  const cableEls = document.querySelectorAll('.cable-plug');
+  let x1 = 0, y1 = 0;
+  for (const el of cableEls) {
+    if (el.dataset.id === cableId) {
+      const body = el.querySelector('.cable-body');
+      if (body) {
+        const r = body.getBoundingClientRect();
+        x1 = r.right - svgRect.left;
+        y1 = r.top + r.height / 2 - svgRect.top;
+      }
+      break;
+    }
   }
+
+  // Titik akhir: pusat .socket-hole
+  const socketEl = socketEls[socketId];
+  let x2 = 0, y2 = 0;
+  if (socketEl) {
+    const hole = socketEl.querySelector('.socket-hole');
+    if (hole) {
+      const r = hole.getBoundingClientRect();
+      x2 = r.left - svgRect.left;
+      y2 = r.top + r.height / 2 - svgRect.top;
+    }
+  }
+
+  const existing = connectedPaths.findIndex(p => p.id === cableId);
+  const pathObj = { id: cableId, color: cable.color, d: makePath(x1, y1, x2, y2) };
+  if (existing >= 0) connectedPaths[existing] = pathObj;
+  else connectedPaths.push(pathObj);
 };
 
-// Perlu watch manual karena kita pakai reactive biasa
-// Kita cek setiap kali connectedWires berubah
-const connectedWiresProxy = computed(() => connectedWires.length);
+const disconnect = (cableId) => {
+  const cable = cables.find(c => c.id === cableId);
+  const socket = sockets.find(s => s.id === cableId);
+  if (cable) cable.connected = false;
+  if (socket) socket.connectedColor = null;
+  const idx = connectedPaths.findIndex(p => p.id === cableId);
+  if (idx >= 0) connectedPaths.splice(idx, 1);
+};
 
-import { watch } from 'vue';
-watch(connectedWiresProxy, () => checkWin());
+// ─── WIN CONDITION ────────────────────────────────────────────────────────────
+const allConnected = computed(() => cables.every(c => c.connected));
+const showLogin = ref(false);
+let winTimer = null;
 
-// ─── SECRET LOGIN ─────────────────────────────────────────────────────────────
-const username = ref('');
-const password = ref('');
-const isLoading = ref(false);
-const loginError = ref('');
+watch(allConnected, (val) => {
+  if (val) {
+    winTimer = setTimeout(() => { showLogin.value = true; }, 900);
+  } else {
+    clearTimeout(winTimer);
+  }
+});
+
+// ─── LOGIN MODAL ──────────────────────────────────────────────────────────────
+const loginUser = ref('');
+const loginPass = ref('');
+const loginLoading = ref(false);
+const loginErr = ref('');
 
 const closeModal = () => {
-  showSecretLogin.value = false;
-  username.value = '';
-  password.value = '';
-  loginError.value = '';
-  // Reset kabel
+  showLogin.value = false;
+  loginUser.value = '';
+  loginPass.value = '';
+  loginErr.value = '';
+  // Reset semua kabel
   cables.forEach(c => c.connected = false);
-  sockets.forEach(s => { s.connected = false; s.cableId = null; });
-  connectedWires.splice(0, connectedWires.length);
+  sockets.forEach(s => s.connectedColor = null);
+  connectedPaths.splice(0);
 };
 
-const handleLogin = async () => {
-  isLoading.value = true;
-  loginError.value = '';
+const doLogin = async () => {
+  loginLoading.value = true;
+  loginErr.value = '';
   try {
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nim: username.value, password: password.value, is_override_login: true }),
+      body: JSON.stringify({ nim: loginUser.value, password: loginPass.value, is_override_login: true }),
     });
+    const data = await res.json();
     if (res.ok) {
-      const data = await res.json();
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       localStorage.setItem('maintenance_bypassed', 'true');
       const map = { superadmin: '/superadmin', admin: '/admin', mahasiswa: '/mahasiswa' };
       window.location.href = map[data.user.role] || '/';
     } else {
-      const data = await res.json();
-      loginError.value = data.message || 'Login gagal.';
+      loginErr.value = data.message || 'Login gagal.';
     }
   } catch {
-    loginError.value = 'Terjadi kesalahan jaringan.';
+    loginErr.value = 'Terjadi kesalahan jaringan.';
   } finally {
-    isLoading.value = false;
+    loginLoading.value = false;
   }
 };
 
@@ -352,443 +374,407 @@ onMounted(async () => {
   } catch {}
 });
 
-onUnmounted(() => clearTimeout(panelSolvedTimer));
+onUnmounted(() => clearTimeout(winTimer));
 </script>
 
 <style scoped>
-/* ─── GLOBAL ─────────────────────────────────────────────────────────────── */
+/* ──── PAGE ──────────────────────────────────────────────────────────────── */
 .maintenance-page {
   min-height: 100vh;
-  background: #0f172a;
+  background: #0d1117;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 2rem 1rem;
+  gap: 2.5rem;
   font-family: 'Inter', 'Segoe UI', sans-serif;
   color: #e2e8f0;
-  user-select: none;
-  gap: 2.5rem;
   overflow: hidden;
+  user-select: none;
   position: relative;
 }
 
-/* Efek grid latar ala blueprint */
+/* Grid blueprint di latar */
 .maintenance-page::before {
   content: '';
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(30, 58, 138, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 58, 138, 0.07) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
   pointer-events: none;
 }
 
-/* ─── PANEL LISTRIK ──────────────────────────────────────────────────────── */
+/* ──── PANEL ──────────────────────────────────────────────────────────────── */
 .fuse-panel {
-  background: #1e293b;
-  border: 2px solid #334155;
-  border-radius: 16px;
   width: 100%;
-  max-width: 480px;
-  box-shadow:
-    0 0 0 1px #0f172a,
-    0 20px 60px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255,255,255,0.05);
-  overflow: visible;
-  position: relative;
+  max-width: 520px;
+  background: #161b22;
+  border: 1.5px solid #30363d;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.03);
+  overflow: hidden;
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.85rem 1.25rem;
-  background: #0f172a;
-  border-bottom: 2px solid #334155;
-  border-radius: 14px 14px 0 0;
+  padding: 0.8rem 1.2rem;
+  background: #0d1117;
+  border-bottom: 1.5px solid #30363d;
 }
 
 .panel-label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  color: #64748b;
+  letter-spacing: 0.14em;
+  color: #6e7681;
 }
 
 .status-light {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 6px #ef4444;
+  background: #da3633;
+  box-shadow: 0 0 6px #da3633;
   transition: all 0.5s;
 }
 
-.status-light.active {
-  background: #22c55e;
-  box-shadow: 0 0 12px #22c55e, 0 0 24px rgba(34, 197, 94, 0.4);
-  animation: blink 1s infinite;
+.status-light.on {
+  background: #3fb950;
+  box-shadow: 0 0 12px #3fb950, 0 0 28px rgba(63,185,80,0.35);
+  animation: blink-light 1s infinite;
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+@keyframes blink-light {
+  50% { opacity: 0.55; }
 }
 
-/* ─── PANEL BODY ─────────────────────────────────────────────────────────── */
+/* ──── PANEL BODY ─────────────────────────────────────────────────────────── */
 .panel-body {
   display: flex;
-  align-items: stretch;
-  padding: 1.5rem;
+  align-items: center;
+  padding: 1.4rem 1.2rem;
   gap: 0;
   position: relative;
-  min-height: 180px;
+  min-height: 200px;
 }
 
-.wires-area {
-  flex: 1;
-  position: relative;
-  min-height: 150px;
-}
-
-/* ─── KABEL (kiri) ───────────────────────────────────────────────────────── */
-.cables-col {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  align-items: flex-start;
-  z-index: 10;
-  padding-right: 0.5rem;
-}
-
-.cable-group-label {
+.side-label {
   font-size: 0.6rem;
   font-weight: 700;
-  letter-spacing: 0.15em;
-  color: #475569;
-  margin-bottom: -0.5rem;
+  letter-spacing: 0.16em;
+  color: #484f58;
+  margin-bottom: 1rem;
+}
+
+/* ──── KABEL (KIRI) ───────────────────────────────────────────────────────── */
+.cables-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.4rem;
+  flex-shrink: 0;
+  z-index: 10;
 }
 
 .cable-plug {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   cursor: grab;
   transition: transform 0.15s, filter 0.15s;
   touch-action: none;
 }
 
-.cable-plug:hover { transform: scale(1.08); filter: brightness(1.2); }
-.cable-plug:active, .cable-plug.dragging { cursor: grabbing; transform: scale(1.12); }
-
-.cable-plug.connected {
-  opacity: 0.4;
-  cursor: default;
-  pointer-events: none;
+.cable-plug:hover {
+  transform: scale(1.1);
+  filter: brightness(1.15);
 }
 
-.cable-end {
-  width: 32px;
-  height: 18px;
-  border-radius: 4px;
-  border: 2px solid rgba(255,255,255,0.15);
-  position: relative;
-  box-shadow: inset 0 -2px 4px rgba(0,0,0,0.3);
+.cable-plug:active { cursor: grabbing; }
+
+.cable-plug.cable-connected {
+  opacity: 0.3;
+  cursor: grab;
+  pointer-events: auto; /* tetap bisa di-grab untuk disconnect */
 }
 
-.cable-c1 .cable-end, .cable-c1.socket-\#ef4444 .socket-hole { background: #ef4444; }
-.cable-c2 .cable-end { background: #3b82f6; }
-.cable-c3 .cable-end { background: #f59e0b; }
+.cable-body {
+  width: 38px;
+  height: 20px;
+  border-radius: 5px;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.4);
+  border: 1.5px solid rgba(255,255,255,0.12);
+}
 
-.cable-label {
+.cable-tag {
   font-size: 0.65rem;
   font-weight: 700;
-  color: #94a3b8;
   letter-spacing: 0.08em;
+  color: #8b949e;
 }
 
-/* ─── SOKET (kanan) ──────────────────────────────────────────────────────── */
-.sockets-col {
+/* ──── AREA KABEL TENGAH ──────────────────────────────────────────────────── */
+.wires-middle {
+  flex: 1;
+  position: relative;
+  align-self: stretch;
+  min-width: 60px;
+}
+
+/* ──── SOKET (KANAN) ──────────────────────────────────────────────────────── */
+.sockets-side {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
   align-items: flex-end;
+  gap: 1.4rem;
+  flex-shrink: 0;
   z-index: 10;
-  padding-left: 0.5rem;
 }
 
-.socket-group-label {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  color: #475569;
-  margin-bottom: -0.5rem;
-}
-
-.socket {
+.socket-item {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   flex-direction: row-reverse;
-  transition: transform 0.2s;
+  transition: transform 0.25s;
 }
 
-.socket.connected { transform: scale(1.1); }
+.socket-item.socket-connected { transform: scale(1.08); }
+
+.socket-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #8b949e;
+}
 
 .socket-hole {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: #0f172a;
-  border: 3px solid #334155;
+  background: #0d1117;
+  border: 3px solid;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.3s;
+  transition: border-color 0.35s, box-shadow 0.35s;
 }
 
-.socket.connected .socket-hole {
-  border-color: v-bind('socket.color');
-}
-
-.socket-\#ef4444 .socket-hole { border-color: rgba(239, 68, 68, 0.4); }
-.socket-\#3b82f6 .socket-hole { border-color: rgba(59, 130, 246, 0.4); }
-.socket-\#f59e0b .socket-hole { border-color: rgba(245, 158, 11, 0.4); }
-
-.socket-inner {
-  width: 10px;
-  height: 10px;
+.socket-dot {
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: #1e293b;
-  transition: all 0.4s;
+  transition: background 0.35s, box-shadow 0.35s;
 }
 
-.socket-inner.glow {
-  background: white;
-  box-shadow: 0 0 8px white;
+.socket-item.socket-connected .socket-dot {
+  box-shadow: 0 0 8px currentColor;
 }
 
-.socket-label {
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: #94a3b8;
-  letter-spacing: 0.08em;
+/* ──── SHAKE (SOKET SALAH) ───────────────────────────────────────────────── */
+.shake {
+  animation: do-shake 0.42s ease-out;
 }
 
-/* Tiap soket punya warna accent */
-.socket-\#ef4444.connected .socket-hole { border-color: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.4); }
-.socket-\#3b82f6.connected .socket-hole { border-color: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.4); }
-.socket-\#f59e0b.connected .socket-hole { border-color: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.4); }
-
-/* Animasi shake saat kabel salah warna */
-.wrong-socket {
-  animation: wrong-shake 0.4s ease-out;
-}
-
-@keyframes wrong-shake {
-  0%   { transform: translateX(0); }
-  20%  { transform: translateX(-5px) rotate(-2deg); }
-  40%  { transform: translateX(5px) rotate(2deg); }
-  60%  { transform: translateX(-4px); }
-  80%  { transform: translateX(3px); }
+@keyframes do-shake {
+  0%   { transform: translateX(0) rotate(0); }
+  18%  { transform: translateX(-5px) rotate(-2deg); }
+  36%  { transform: translateX(5px) rotate(2deg); }
+  54%  { transform: translateX(-4px); }
+  72%  { transform: translateX(3px); }
+  88%  { transform: translateX(-2px); }
   100% { transform: translateX(0); }
 }
 
-/* ─── PANEL FOOTER (breaker) ─────────────────────────────────────────────── */
+/* ──── FOOTER BREAKER ─────────────────────────────────────────────────────── */
 .panel-footer {
   display: flex;
   gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
-  background: #0f172a;
-  border-top: 2px solid #334155;
-  border-radius: 0 0 14px 14px;
+  padding: 0.7rem 1.2rem;
+  background: #0d1117;
+  border-top: 1.5px solid #30363d;
 }
 
 .breaker {
   flex: 1;
-  height: 8px;
-  border-radius: 4px;
-  background: #334155;
-  transition: background 0.4s;
+  height: 7px;
+  border-radius: 99px;
+  background: #21262d;
+  transition: background 0.4s, box-shadow 0.4s;
 }
 
 .breaker.tripped {
-  background: #ef4444;
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+  background: #da3633;
+  box-shadow: 0 0 8px rgba(218, 54, 51, 0.45);
 }
 
-/* ─── KONTEN MAINTENANCE ─────────────────────────────────────────────────── */
+/* ──── MAINTENANCE CONTENT ────────────────────────────────────────────────── */
 .maintenance-content {
   text-align: center;
   max-width: 440px;
 }
 
-.maintenance-icon {
-  font-size: 2.5rem;
+.maint-icon {
+  font-size: 2.4rem;
   margin-bottom: 0.75rem;
-  animation: spin-slow 4s linear infinite;
+  display: inline-block;
+  animation: slow-spin 5s linear infinite;
 }
 
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
+@keyframes slow-spin {
   to { transform: rotate(360deg); }
 }
 
-.maintenance-title {
-  font-size: 1.75rem;
+.maintenance-content h1 {
+  font-size: 1.7rem;
   font-weight: 800;
-  color: #f1f5f9;
-  margin-bottom: 0.75rem;
-  line-height: 1.2;
+  color: #f0f6fc;
+  margin: 0 0 0.75rem;
+  line-height: 1.25;
 }
 
-.maintenance-message {
+.maintenance-content p {
   font-size: 1rem;
-  color: #94a3b8;
+  color: #8b949e;
   line-height: 1.65;
-  margin-bottom: 1.25rem;
+  margin: 0 0 1.25rem;
 }
 
-.maintenance-dots {
+.dots {
   display: flex;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 6px;
 }
 
-.maintenance-dots span {
+.dots span {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #475569;
+  background: #484f58;
   animation: dot-pulse 1.4s ease-in-out infinite;
 }
 
-.maintenance-dots span:nth-child(2) { animation-delay: 0.2s; }
-.maintenance-dots span:nth-child(3) { animation-delay: 0.4s; }
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes dot-pulse {
   0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
+  40%            { transform: scale(1);   opacity: 1; }
 }
 
-/* ─── MODAL ──────────────────────────────────────────────────────────────── */
-.secret-modal-overlay {
+/* ──── MODAL ──────────────────────────────────────────────────────────────── */
+.modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.82);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 999;
   padding: 1rem;
 }
 
-.secret-modal {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 20px;
+.modal-box {
+  background: #161b22;
+  border: 1.5px solid #30363d;
+  border-radius: 18px;
   padding: 2.5rem 2rem;
   width: 100%;
-  max-width: 380px;
+  max-width: 370px;
   text-align: center;
-  box-shadow: 0 25px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
+  box-shadow: 0 30px 90px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04);
 }
 
-.modal-icon {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-}
-
-.secret-modal h2 {
-  font-size: 1.35rem;
+.modal-box h2 {
+  font-size: 1.3rem;
   font-weight: 700;
-  color: #22c55e;
-  margin: 0 0 0.4rem;
+  color: #3fb950;
+  margin: 0 0 0.35rem;
 }
 
 .modal-sub {
-  font-size: 0.85rem;
-  color: #64748b;
+  font-size: 0.82rem;
+  color: #6e7681;
   margin-bottom: 1.5rem;
 }
 
-.secret-modal form {
+.modal-box form {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
 
-.secret-modal input {
-  padding: 0.85rem 1rem;
-  border-radius: 10px;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 0.95rem;
+.modal-box input {
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  border: 1.5px solid #30363d;
+  background: #0d1117;
+  color: #e6edf3;
+  font-size: 0.92rem;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.secret-modal input:focus {
-  border-color: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+.modal-box input:focus {
+  border-color: #3fb950;
+  box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.15);
 }
 
-.secret-modal button[type='submit'] {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: white;
+.modal-box button[type='submit'] {
+  background: #238636;
+  color: #fff;
   border: none;
-  padding: 0.9rem;
-  border-radius: 10px;
+  padding: 0.85rem;
+  border-radius: 8px;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   cursor: pointer;
-  margin-top: 0.25rem;
-  transition: opacity 0.2s, transform 0.15s;
+  margin-top: 0.2rem;
+  transition: background 0.2s, transform 0.15s;
 }
 
-.secret-modal button[type='submit']:hover { opacity: 0.92; transform: translateY(-1px); }
-.secret-modal button[type='submit']:disabled { background: #334155; cursor: not-allowed; transform: none; }
+.modal-box button[type='submit']:hover:not(:disabled) { background: #2ea043; transform: translateY(-1px); }
+.modal-box button[type='submit']:disabled { background: #21262d; cursor: not-allowed; }
 
-.close-btn {
+.cancel-btn {
   background: transparent;
-  color: #475569;
+  color: #484f58;
   border: none;
   width: 100%;
-  padding: 0.65rem;
-  margin-top: 0.75rem;
+  padding: 0.6rem;
+  margin-top: 0.5rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   transition: color 0.2s;
 }
 
-.close-btn:hover { color: #94a3b8; }
+.cancel-btn:hover { color: #8b949e; }
 
-.error-msg {
-  color: #f87171;
-  font-size: 0.85rem;
-  margin-top: 0.75rem;
+.err {
+  color: #f85149;
+  font-size: 0.82rem;
+  margin-top: 0.6rem;
 }
 
-/* ─── TRANSITION ─────────────────────────────────────────────────────────── */
-.modal-pop-enter-active { animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+/* ──── MODAL TRANSITION ───────────────────────────────────────────────────── */
+.modal-pop-enter-active { animation: pop-in 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .modal-pop-leave-active { animation: pop-in 0.2s reverse ease-in; }
 
 @keyframes pop-in {
-  from { opacity: 0; transform: scale(0.85) translateY(20px); }
+  from { opacity: 0; transform: scale(0.85) translateY(16px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* ─── WIRES SVG ──────────────────────────────────────────────────────────── */
-.wires-svg { pointer-events: none; }
-
-/* ─── RESPONSIF ──────────────────────────────────────────────────────────── */
+/* ──── RESPONSIVE ─────────────────────────────────────────────────────────── */
 @media (max-width: 500px) {
-  .maintenance-title { font-size: 1.4rem; }
-  .panel-body { padding: 1rem; gap: 0; }
-  .cables-col, .sockets-col { gap: 1.1rem; }
+  .panel-body { padding: 1rem 0.8rem; }
+  .cables-side, .sockets-side { gap: 1.1rem; }
+  .maintenance-content h1 { font-size: 1.4rem; }
 }
 </style>
