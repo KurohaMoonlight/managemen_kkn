@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, onUnmounted } from 'vue';
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import html2pdf from 'html2pdf.js';
 import { useToast } from '../../composables/useNotification.js';
 
@@ -27,6 +27,40 @@ const logbookFiles = ref([]);
 const isSubmittingLogbook = ref(false);
 const previewImageUrl = ref(null);
 const fileInputRef = ref(null);
+
+// --- FILTER STATE ---
+const filterTanggalMulai = ref('');
+const filterTanggalSelesai = ref('');
+const selectedPembuat = ref([]);
+
+const uniquePembuat = computed(() => {
+  const pembuatSet = new Set();
+  logbooks.value.forEach(log => {
+    if (log.pembuat) pembuatSet.add(log.pembuat);
+  });
+  return Array.from(pembuatSet);
+});
+
+const filteredLogbooks = computed(() => {
+  return logbooks.value.filter(log => {
+    if (filterTanggalMulai.value && log.tanggal) {
+      if (log.tanggal < filterTanggalMulai.value) return false;
+    }
+    if (filterTanggalSelesai.value && log.tanggal) {
+      if (log.tanggal > filterTanggalSelesai.value) return false;
+    }
+    if (selectedPembuat.value.length > 0 && log.pembuat) {
+      if (!selectedPembuat.value.includes(log.pembuat)) return false;
+    }
+    return true;
+  });
+});
+
+const resetFilters = () => {
+  filterTanggalMulai.value = '';
+  filterTanggalSelesai.value = '';
+  selectedPembuat.value = [];
+};
 
 // --- CONTEXT MENU STATE ---
 const contextMenu = ref({ show: false, x: 0, y: 0, log: null });
@@ -391,9 +425,39 @@ const submitLogbook = async () => {
     </div>
 
     <h3 style="margin-top: 3.5rem; margin-bottom: 1.5rem; color: var(--text-main);">Riwayat Logbook Kelompok</h3>
+    
+    <!-- FILTER SECTION -->
+    <div class="logbook-filters" style="background: #f8fafc; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h4 style="margin: 0; color: var(--text-main); font-size: 1.1rem;">🔍 Filter Logbook</h4>
+        <button v-if="filterTanggalMulai || filterTanggalSelesai || selectedPembuat.length > 0" @click="resetFilters" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 0.9rem; font-weight: 600; text-decoration: underline;">Reset Filter</button>
+      </div>
+      
+      <div class="filter-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+        <div>
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">Tanggal Mulai</label>
+          <input type="date" v-model="filterTanggalMulai" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+        <div>
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">Tanggal Selesai</label>
+          <input type="date" v-model="filterTanggalSelesai" class="form-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px;" />
+        </div>
+        <div style="grid-column: 1 / -1;" v-if="uniquePembuat.length > 0">
+          <label style="display:block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem;">Pembuat (PIC)</label>
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <label v-for="pembuat in uniquePembuat" :key="pembuat" style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer; font-size: 0.9rem; background: white; padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1;">
+              <input type="checkbox" v-model="selectedPembuat" :value="pembuat" style="accent-color: var(--color-primary);" />
+              {{ pembuat }}
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="logbook-list" style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <div v-if="filteredLogbooks.length === 0 && logbooks.length > 0" class="text-muted text-center" style="padding: 2rem; background: #f8fafc; border-radius: 12px; border: 1px dashed var(--border-color);">Tidak ada logbook yang sesuai dengan filter.</div>
       <div v-if="logbooks.length === 0" class="text-muted text-center" style="padding: 2rem; background: #f8fafc; border-radius: 12px; border: 1px dashed var(--border-color);">Belum ada logbook yang diunggah.</div>
-      <div v-for="log in logbooks" :key="log.id" class="logbook-item" style="border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 12px; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"
+      <div v-for="log in filteredLogbooks" :key="log.id" class="logbook-item" style="border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 12px; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"
            @contextmenu="handleContextMenu($event, log)" 
            :title="log.user_id === user.id ? 'Klik kanan untuk edit/hapus' : ''">
         <div class="log-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
