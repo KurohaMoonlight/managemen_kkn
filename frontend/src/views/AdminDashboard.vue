@@ -12,14 +12,12 @@ import AdminFileExplorer from '../components/admin/AdminFileExplorer.vue';
 import BukuTamuAdmin from '../components/BukuTamuAdmin.vue';
 import '../components/admin/admin-shared.css';
 
+import { logoutWithMaintenanceCheck } from '../composables/useMaintenanceWatcher.js';
+
 const router = useRouter();
 const explorerRef = ref(null);
 
-const logout = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  router.push('/login');
-};
+const logout = () => logoutWithMaintenanceCheck(router);
 
 const refreshExplorer = () => {
   explorerRef.value?.fetchDirectory?.({ id: null, nama_folder: 'Beranda' });

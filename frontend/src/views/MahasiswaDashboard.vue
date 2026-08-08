@@ -8,6 +8,7 @@ import FileExplorer from '../components/mahasiswa/FileExplorer.vue';
 import SuratGenerator from '../components/SuratGenerator.vue';
 import PengajuanReimbursement from '../components/mahasiswa/PengajuanReimbursement.vue';
 import { useToast } from '../composables/useNotification.js';
+import { logoutWithMaintenanceCheck } from '../composables/useMaintenanceWatcher.js';
 
 const router = useRouter();
 const { success: toastSuccess, error: toastError } = useToast();
@@ -95,11 +96,7 @@ const closeSettingsMenu = () => {
   showSettingsMenu.value = false;
 };
 
-const logout = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  router.push('/login');
-};
+const logout = () => logoutWithMaintenanceCheck(router);
 
 const checkPasswordSecurity = async () => {
   try {

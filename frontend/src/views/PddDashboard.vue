@@ -2,8 +2,10 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePddExplorer } from '../composables/usePddExplorer.js';
+import { logoutWithMaintenanceCheck } from '../composables/useMaintenanceWatcher.js';
 
 const router = useRouter();
+const logout = () => logoutWithMaintenanceCheck(router);
 const user = ref(null);
 const token = ref('');
 
@@ -82,7 +84,7 @@ const isZip = (f) => f.nama_file && (f.nama_file.endsWith('.zip') || f.nama_file
       </div>
       <div class="nav-actions">
         <router-link to="/mahasiswa" class="btn-logout" style="color: var(--color-primary); border-color: var(--color-primary); text-decoration: none;">Ke Dashboard Mahasiswa</router-link>
-        <button @click="router.push('/login'); localStorage.clear();" class="btn-logout">Logout</button>
+        <button @click="logout" class="btn-logout">Logout</button>
       </div>
     </header>
 

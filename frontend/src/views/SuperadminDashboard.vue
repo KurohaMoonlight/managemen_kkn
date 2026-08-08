@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import { logoutWithMaintenanceCheck } from '../composables/useMaintenanceWatcher.js';
 
 // ─── Tab Components ───────────────────────────────────────────────────────
 import SAOverview from '../components/superadmin/SAOverview.vue';
@@ -115,9 +116,11 @@ const closePasswordModal = () => {
 };
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────
+// Superadmin selalu redirect ke /login saat logout (tidak kena maintenance)
 const logout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  localStorage.removeItem('maintenance_bypassed');
   router.push('/login');
 };
 

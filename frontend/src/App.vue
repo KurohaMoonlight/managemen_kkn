@@ -1,5 +1,9 @@
 <script setup>
 import NotificationSystem from './components/NotificationSystem.vue';
+import { useMaintenanceWatcher } from './composables/useMaintenanceWatcher.js';
+
+// Polling maintenance setiap 30 detik — kick user jika maintenance tiba-tiba aktif
+useMaintenanceWatcher();
 </script>
 
 <template>
