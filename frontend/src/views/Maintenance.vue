@@ -24,11 +24,17 @@
       <!-- Wrapper baru untuk drag & drop -->
       <div class="hammer-wrapper" 
            ref="hammerRef"
-           :style="{ transform: `translate(${hammerX}px, ${hammerY}px)`, cursor: isDragging ? 'grabbing' : 'grab' }"
+           :style="{ 
+             transform: `translate(${hammerX}px, ${hammerY}px)`, 
+             cursor: isDragging ? 'grabbing' : 'grab',
+             transition: isDragging ? 'none' : 'transform 0.5s ease-out'
+           }"
            @mousedown.prevent="startDrag"
            @touchstart.prevent="startDrag">
         
-        <div class="hammer-container" :class="{ 'auto-hit': isAutoAnim, 'manual-hit': manualHitAnim }">
+        <div class="hammer-container" 
+             :class="{ 'auto-hit': isAutoAnim, 'manual-hit': manualHitAnim }"
+             :style="isDragging ? { transform: `rotate(${hammerRotation}deg)`, transition: 'none' } : { transition: 'transform 0.3s ease-out' }">
           <div class="hammer">
             <div class="hammer-head"></div>
             <div class="hammer-handle"></div>
@@ -78,6 +84,11 @@ const hammerY = ref(0);
 const startX = ref(0);
 const startY = ref(0);
 
+const hammerRotation = ref(0);
+let velocityR = 0;
+let rafId = null;
+let lastX = 0;
+
 const manualShake = ref(false);
 const manualHitAnim = ref(false);
 
@@ -89,16 +100,40 @@ const isBrickBroken = (r, b) => {
   return true; // Hancur semua jika hitCount >= 3
 };
 
+const physicsLoop = () => {
+  if (!isDragging.value) return;
+  
+  // Fisika bandul/loyo
+  // Palu condong ke bawah (misal 110 derajat karena pegangannya di bawah kanan)
+  const dangleAngle = 110; 
+  
+  // Spring force menuju dangle angle
+  const springForce = (dangleAngle - hammerRotation.value) * 0.05;
+  velocityR += springForce;
+  
+  // Redaman (friction) agar tidak berayun selamanya
+  velocityR *= 0.85; 
+  
+  hammerRotation.value += velocityR;
+  
+  rafId = requestAnimationFrame(physicsLoop);
+};
+
 const startDrag = (e) => {
   if (showSecretLogin.value) return;
   isDragging.value = true;
   isAutoAnim.value = false; // Matikan animasi pukul otomatis saat ditarik
+  hammerRotation.value = 0; // Reset rotasi
+  velocityR = 0;
   
   const clientX = e.touches ? e.touches[0].clientX : e.clientX;
   const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   
   startX.value = clientX - hammerX.value;
   startY.value = clientY - hammerY.value;
+  lastX = clientX;
+  
+  physicsLoop();
 };
 
 const onDrag = (e) => {
@@ -108,11 +143,19 @@ const onDrag = (e) => {
   
   hammerX.value = clientX - startX.value;
   hammerY.value = clientY - startY.value;
+  
+  // Beri gaya (force) pada rotasi palu jika digeser secara horizontal
+  const dx = clientX - lastX;
+  velocityR -= dx * 0.8; // Ayunan kencang mengikuti geseran
+  lastX = clientX;
 };
 
 const endDrag = (e) => {
   if (!isDragging.value) return;
   isDragging.value = false;
+  cancelAnimationFrame(rafId);
+  hammerRotation.value = 0;
+  velocityR = 0;
   
   // Cek collision antara hammer dan wall
   if (wallRef.value && hammerRef.value) {
