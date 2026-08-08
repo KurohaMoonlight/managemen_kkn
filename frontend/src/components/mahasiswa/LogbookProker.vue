@@ -33,6 +33,27 @@ const filterTanggalMulai = ref('');
 const filterTanggalSelesai = ref('');
 const selectedPembuat = ref([]);
 
+const rekapJamLogbook = computed(() => {
+  const recap = {};
+  filteredLogbooks.value.forEach(log => {
+    if (log.pembuat && log.waktu_mulai && log.waktu_selesai) {
+      const startTime = log.waktu_mulai.slice(0, 5);
+      const endTime = log.waktu_selesai.slice(0, 5);
+      const start = new Date(`1970-01-01T${startTime}:00`);
+      const end = new Date(`1970-01-01T${endTime}:00`);
+      let diff = (end - start) / (1000 * 60 * 60);
+      if (!isNaN(diff)) {
+        if (diff < 0) diff += 24;
+        if (!recap[log.pembuat]) {
+          recap[log.pembuat] = 0;
+        }
+        recap[log.pembuat] += diff;
+      }
+    }
+  });
+  return recap;
+});
+
 const uniquePembuat = computed(() => {
   const pembuatSet = new Set();
   logbooks.value.forEach(log => {
@@ -426,6 +447,17 @@ const submitLogbook = async () => {
 
     <h3 style="margin-top: 3.5rem; margin-bottom: 1.5rem; color: var(--text-main);">Riwayat Logbook Kelompok</h3>
     
+    <!-- REKAPITULASI JAM LOGBOOK -->
+    <div v-if="Object.keys(rekapJamLogbook).length > 0" class="logbook-recap" style="background: #f0fdf4; padding: 1.5rem; border-radius: 12px; border: 1px solid #bbf7d0; margin-bottom: 1.5rem;">
+      <h4 style="margin: 0 0 1rem 0; color: #166534; font-size: 1.1rem;">⏱️ Rekapitulasi Jam Kegiatan</h4>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+        <div v-for="(hours, pic) in rekapJamLogbook" :key="pic" style="background: white; padding: 1rem; border-radius: 8px; border: 1px solid #dcfce7; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+          <span style="font-weight: 600; color: #166534; font-size: 0.95rem;">{{ pic }}</span>
+          <span style="font-size: 1.25rem; font-weight: 700; color: #15803d;">{{ hours.toFixed(1) }} <span style="font-size: 0.9rem; font-weight: 500; color: #22c55e;">Jam</span></span>
+        </div>
+      </div>
+    </div>
+
     <!-- FILTER SECTION -->
     <div class="logbook-filters" style="background: #f8fafc; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
