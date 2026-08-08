@@ -33,7 +33,6 @@ const {
   openAddAbsenModal,
   exportAbsensiExcel,
   submitAddAbsen,
-  submitAddAbsen,
   init,
   contextMenu,
   closeContextMenu,
